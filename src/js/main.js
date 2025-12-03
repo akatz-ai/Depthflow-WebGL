@@ -2,6 +2,7 @@ import { Renderer } from './renderer.js';
 import { State } from './state.js';
 import { InputHandler } from './input.js';
 import { UI } from './ui.js';
+import { DepthEstimator } from './depth.js';
 
 class DepthFlowApp {
     constructor() {
@@ -9,7 +10,8 @@ class DepthFlowApp {
         this.state = new State();
         this.renderer = new Renderer(this.canvas, this.state);
         this.input = new InputHandler(this.canvas, this.state);
-        this.ui = new UI(this.state, this.renderer);
+        this.depthEstimator = new DepthEstimator();
+        this.ui = new UI(this.state, this.renderer, this.depthEstimator);
     }
 
     async init() {

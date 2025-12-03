@@ -194,6 +194,33 @@ button:hover {
     font-size: 1.2em;
 }
 
+.progress-container {
+    margin: 10px 0;
+    padding: 10px;
+    background: #2a2a4e;
+    border-radius: 4px;
+}
+
+.progress-bar {
+    height: 4px;
+    background: #7f8fff;
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    display: block;
+    margin-top: 8px;
+    font-size: 0.85em;
+    color: #888;
+}
+
+#depth-upload-group.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 @media (max-width: 768px) {
     .controls {
         width: 100%;

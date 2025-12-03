@@ -19,9 +19,17 @@
                     <label for="image-upload">Color Image</label>
                     <input type="file" id="image-upload" accept="image/*">
                 </div>
-                <div class="upload-group">
-                    <label for="depth-upload">Depth Map</label>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="auto-depth-checkbox" checked>
+                    <label for="auto-depth-checkbox">Auto-generate depth map</label>
+                </div>
+                <div class="upload-group" id="depth-upload-group">
+                    <label for="depth-upload">Depth Map (optional)</label>
                     <input type="file" id="depth-upload" accept="image/*">
+                </div>
+                <div id="depth-progress" class="progress-container" style="display: none;">
+                    <div class="progress-bar" id="progress-bar"></div>
+                    <span class="progress-text" id="progress-text">Loading model...</span>
                 </div>
             </div>
 
