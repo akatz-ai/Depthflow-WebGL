@@ -74,6 +74,7 @@ vec4 sampleTexture(sampler2D tex, vec2 gluv, bool mirror, float aspect) {
     // We need to map to (0, 0) to (1, 1) accounting for image aspect
     vec2 scale = vec2(1.0 / aspect, 1.0);
     vec2 stuv = (gluv * scale + 1.0) / 2.0;
+    stuv.y = 1.0 - stuv.y;  // Flip Y (WebGL vs image coordinates)
 
     return texture(tex, stuv);
 }

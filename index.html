@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DepthFlow WebGL</title>
+    <link rel="stylesheet" href="src/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas"></canvas>
+
+        <div class="controls" id="controls">
+            <h2>DepthFlow WebGL</h2>
+
+            <div class="section">
+                <h3>Images</h3>
+                <div class="upload-group">
+                    <label for="image-upload">Color Image</label>
+                    <input type="file" id="image-upload" accept="image/*">
+                </div>
+                <div class="upload-group">
+                    <label for="depth-upload">Depth Map</label>
+                    <input type="file" id="depth-upload" accept="image/*">
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Parallax</h3>
+                <div class="slider-group">
+                    <label>Height <span id="height-value">0.20</span></label>
+                    <input type="range" id="height-slider">
+                </div>
+                <div class="slider-group">
+                    <label>Steady <span id="steady-value">0.30</span></label>
+                    <input type="range" id="steady-slider">
+                </div>
+                <div class="slider-group">
+                    <label>Focus <span id="focus-value">0.00</span></label>
+                    <input type="range" id="focus-slider">
+                </div>
+                <div class="slider-group">
+                    <label>Zoom <span id="zoom-value">1.00</span></label>
+                    <input type="range" id="zoom-slider">
+                </div>
+                <div class="slider-group">
+                    <label>Isometric <span id="isometric-value">0.50</span></label>
+                    <input type="range" id="isometric-slider">
+                </div>
+                <div class="slider-group">
+                    <label>Dolly <span id="dolly-value">0.00</span></label>
+                    <input type="range" id="dolly-slider">
+                </div>
+                <div class="slider-group">
+                    <label>Invert <span id="invert-value">0.00</span></label>
+                    <input type="range" id="invert-slider">
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Quality & Behavior</h3>
+                <div class="slider-group">
+                    <label>Quality <span id="quality-value">0.50</span></label>
+                    <input type="range" id="quality-slider">
+                </div>
+                <div class="slider-group">
+                    <label>Smoothing <span id="smoothing-value">0.85</span></label>
+                    <input type="range" id="smoothing-slider">
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="mirror-checkbox" checked>
+                    <label for="mirror-checkbox">Mirror edges</label>
+                </div>
+            </div>
+
+            <div class="section">
+                <button id="reset-btn">Reset Defaults</button>
+            </div>
+
+            <div class="section instructions">
+                <p><strong>Click and drag</strong> to move the camera</p>
+            </div>
+        </div>
+
+        <button class="toggle-controls" id="toggle-controls">
+            <span>&#9776;</span>
+        </button>
+    </div>
+
+    <script type="module" src="src/js/main.js"></script>
+</body>
+</html>
