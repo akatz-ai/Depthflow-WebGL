@@ -34,6 +34,23 @@
             </div>
 
             <div class="section">
+                <h3>Motion Preset</h3>
+                <div class="select-group">
+                    <select id="motion-preset">
+                        <option value="none">None</option>
+                    </select>
+                </div>
+                <div class="slider-group">
+                    <label>Intensity <span id="motion-intensity-value">1.0</span></label>
+                    <input type="range" id="motion-intensity" min="0.1" max="3" step="0.1" value="1">
+                </div>
+                <div class="slider-group">
+                    <label>Speed <span id="motion-speed-value">1.0</span></label>
+                    <input type="range" id="motion-speed" min="0.1" max="3" step="0.1" value="1">
+                </div>
+            </div>
+
+            <div class="section">
                 <h3>Parallax</h3>
                 <div class="slider-group">
                     <label>Height <span id="height-value">0.20</span></label>
@@ -48,7 +65,7 @@
                     <input type="range" id="focus-slider">
                 </div>
                 <div class="slider-group">
-                    <label>Zoom <span id="zoom-value">1.00</span></label>
+                    <label>Zoom <span id="zoom-value">0</span></label>
                     <input type="range" id="zoom-slider">
                 </div>
                 <div class="slider-group">
@@ -72,6 +89,14 @@
                     <input type="range" id="quality-slider">
                 </div>
                 <div class="slider-group">
+                    <label>Edge Fix <span id="edgeFix-value">0.20</span></label>
+                    <input type="range" id="edgeFix-slider">
+                </div>
+                <div class="slider-group">
+                    <label>SSAA <span id="ssaa-value">1.00</span></label>
+                    <input type="range" id="ssaa-slider">
+                </div>
+                <div class="slider-group">
                     <label>Smoothing <span id="smoothing-value">0.85</span></label>
                     <input type="range" id="smoothing-slider">
                 </div>
@@ -86,7 +111,9 @@
             </div>
 
             <div class="section instructions">
-                <p><strong>Click and drag</strong> to move the camera</p>
+                <p><strong>Left drag:</strong> Parallax offset</p>
+                <p><strong>Right drag:</strong> Pan camera</p>
+                <p><strong>Scroll:</strong> Zoom in/out</p>
             </div>
         </div>
 

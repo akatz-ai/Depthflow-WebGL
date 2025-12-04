@@ -3,6 +3,7 @@ import { State } from './state.js';
 import { InputHandler } from './input.js';
 import { UI } from './ui.js';
 import { DepthEstimator } from './depth.js';
+import { MotionController } from './motion.js';
 
 class DepthFlowApp {
     constructor() {
@@ -11,7 +12,9 @@ class DepthFlowApp {
         this.renderer = new Renderer(this.canvas, this.state);
         this.input = new InputHandler(this.canvas, this.state);
         this.depthEstimator = new DepthEstimator();
-        this.ui = new UI(this.state, this.renderer, this.depthEstimator);
+        this.motion = new MotionController(this.state);
+        this.ui = new UI(this.state, this.renderer, this.depthEstimator, this.motion);
+        this.lastTime = performance.now();
     }
 
     async init() {
@@ -19,7 +22,13 @@ class DepthFlowApp {
         this.ui.init();
         this.input.init();
         await this.loadDefaultImages();
-        this.render();
+
+        // Wait for next frame to ensure canvas is properly laid out
+        requestAnimationFrame(() => {
+            this.renderer.resize();
+            this.lastTime = performance.now();
+            this.render();
+        });
     }
 
     async loadDefaultImages() {
@@ -41,7 +50,13 @@ class DepthFlowApp {
     }
 
     render() {
+        const now = performance.now();
+        const deltaTime = (now - this.lastTime) / 1000;
+        this.lastTime = now;
+
+        this.motion.update(deltaTime);
         this.state.update();
+        this.ui.syncZoomSlider();
         this.renderer.render();
         requestAnimationFrame(() => this.render());
     }

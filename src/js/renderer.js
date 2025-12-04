@@ -7,6 +7,10 @@ export class Renderer {
         this.uniforms = {};
         this.textures = { image: null, depth: null };
         this.imageAspect = 1.0;
+
+        // Store original depth for edge fix processing
+        this.originalDepth = null;
+        this.lastEdgeFix = -1;
     }
 
     async init() {
@@ -71,7 +75,7 @@ export class Renderer {
             'uImage', 'uDepth', 'uResolution', 'uImageAspect',
             'uHeight', 'uSteady', 'uFocus', 'uZoom', 'uIsometric',
             'uDolly', 'uInvert', 'uMirror', 'uQuality',
-            'uOffset', 'uCenter', 'uOrigin'
+            'uOffset', 'uCenter', 'uOrigin', 'uSSAA'
         ];
 
         for (const name of names) {
@@ -117,10 +121,79 @@ export class Renderer {
 
     async loadDepth(blob) {
         const img = await createImageBitmap(blob);
-        this.uploadTexture('depth', img);
+
+        // Convert to ImageData for storage and processing
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        this.originalDepth = ctx.getImageData(0, 0, img.width, img.height);
+        this.lastEdgeFix = -1;  // Force reprocess
+
+        this.applyEdgeFix();
     }
 
     loadDepthFromImageData(imageData) {
+        // Store original for edge fix processing
+        this.originalDepth = imageData;
+        this.lastEdgeFix = -1;  // Force reprocess
+
+        this.applyEdgeFix();
+    }
+
+    // Apply morphological dilation to depth map (CPU-side edge fix)
+    applyEdgeFix() {
+        if (!this.originalDepth) return;
+
+        const edgeFix = this.state.edgeFix;
+
+        // Skip if edgeFix hasn't changed
+        if (edgeFix === this.lastEdgeFix) return;
+        this.lastEdgeFix = edgeFix;
+
+        const { width, height, data } = this.originalDepth;
+
+        if (edgeFix <= 0) {
+            // No dilation, use original
+            this.uploadDepthTexture(this.originalDepth);
+            return;
+        }
+
+        // Create output buffer
+        const output = new ImageData(width, height);
+        const radius = Math.ceil(edgeFix * 10);  // Scale 0-1 to 0-10 pixel radius
+
+        // Morphological dilation: take max depth in circular kernel
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                let maxVal = 0;
+
+                // Sample circular kernel
+                for (let ky = -radius; ky <= radius; ky++) {
+                    for (let kx = -radius; kx <= radius; kx++) {
+                        // Check if within circular kernel
+                        if (kx * kx + ky * ky <= radius * radius) {
+                            const sx = Math.min(Math.max(x + kx, 0), width - 1);
+                            const sy = Math.min(Math.max(y + ky, 0), height - 1);
+                            const idx = (sy * width + sx) * 4;
+                            maxVal = Math.max(maxVal, data[idx]);
+                        }
+                    }
+                }
+
+                const outIdx = (y * width + x) * 4;
+                output.data[outIdx] = maxVal;
+                output.data[outIdx + 1] = maxVal;
+                output.data[outIdx + 2] = maxVal;
+                output.data[outIdx + 3] = 255;
+            }
+        }
+
+        this.uploadDepthTexture(output);
+    }
+
+    uploadDepthTexture(imageData) {
         const gl = this.gl;
 
         if (this.textures.depth) {
@@ -191,12 +264,17 @@ export class Renderer {
         gl.uniform1f(this.uniforms.uHeight, s.height);
         gl.uniform1f(this.uniforms.uSteady, s.steady);
         gl.uniform1f(this.uniforms.uFocus, s.focus);
-        gl.uniform1f(this.uniforms.uZoom, s.zoom);
+        // Exponential zoom: 0 = 1x, 100 = 2x, -100 = 0.5x
+        gl.uniform1f(this.uniforms.uZoom, Math.pow(2, s.zoom / 100));
         gl.uniform1f(this.uniforms.uIsometric, s.isometric);
         gl.uniform1f(this.uniforms.uDolly, s.dolly);
         gl.uniform1f(this.uniforms.uInvert, s.invert);
         gl.uniform1i(this.uniforms.uMirror, s.mirror ? 1 : 0);
         gl.uniform1f(this.uniforms.uQuality, s.quality);
+        gl.uniform1f(this.uniforms.uSSAA, s.ssaa);
+
+        // Check if edge fix needs to be reapplied
+        this.applyEdgeFix();
 
         gl.uniform2f(this.uniforms.uOffset, s.offsetX, s.offsetY);
         gl.uniform2f(this.uniforms.uCenter, s.centerX, s.centerY);

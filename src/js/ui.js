@@ -1,8 +1,11 @@
+import { PRESETS } from './motion.js';
+
 export class UI {
-    constructor(state, renderer, depthEstimator) {
+    constructor(state, renderer, depthEstimator, motion) {
         this.state = state;
         this.renderer = renderer;
         this.depthEstimator = depthEstimator;
+        this.motion = motion;
         this.autoDepthEnabled = true;
     }
 
@@ -21,19 +24,24 @@ export class UI {
         });
         depthUploadGroup.classList.toggle('disabled', this.autoDepthEnabled);
 
-        // Sliders
-        this.bindSlider('height', 0, 0.5, 0.01);
+        // Sliders - ranges matching ComfyUI DepthFlow implementation
+        this.bindSlider('height', 0, 1.0, 0.01);      // Was 0.5, now allows stronger parallax
         this.bindSlider('steady', 0, 1, 0.01);
         this.bindSlider('focus', 0, 1, 0.01);
-        this.bindSlider('zoom', 0.5, 2, 0.01);
+        this.bindSlider('zoom', -100, 200, 1, true);    // 0 = 1.0x, synced with mouse wheel
         this.bindSlider('isometric', 0, 1, 0.01);
-        this.bindSlider('dolly', 0, 5, 0.1);
+        this.bindSlider('dolly', 0, 10, 0.1);         // Was 5, now matches intensity range
         this.bindSlider('invert', 0, 1, 0.01);
         this.bindSlider('quality', 0.1, 1, 0.01);
         this.bindSlider('smoothing', 0, 0.99, 0.01);
+        this.bindSliderDebounced('edgeFix', 0, 1.0, 0.1, 150);  // Depth dilation (debounced)
+        this.bindSlider('ssaa', 1, 2.0, 0.1);                   // Supersampling AA
 
         // Checkbox
         this.bindCheckbox('mirror');
+
+        // Motion presets
+        this.bindMotionPresets();
 
         // Reset button
         document.getElementById('reset-btn').addEventListener('click', () => {
@@ -100,7 +108,24 @@ export class UI {
         }
     }
 
-    bindSlider(name, min, max, step) {
+    bindSlider(name, min, max, step, isInt = false) {
+        const slider = document.getElementById(`${name}-slider`);
+        const value = document.getElementById(`${name}-value`);
+
+        slider.min = min;
+        slider.max = max;
+        slider.step = step;
+        slider.value = this.state[name];
+        value.textContent = isInt ? this.state[name] : this.state[name].toFixed(2);
+
+        slider.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            this.state[name] = v;
+            value.textContent = isInt ? v : v.toFixed(2);
+        });
+    }
+
+    bindSliderDebounced(name, min, max, step, delay) {
         const slider = document.getElementById(`${name}-slider`);
         const value = document.getElementById(`${name}-value`);
 
@@ -110,10 +135,16 @@ export class UI {
         slider.value = this.state[name];
         value.textContent = this.state[name].toFixed(2);
 
+        let timeout = null;
         slider.addEventListener('input', (e) => {
             const v = parseFloat(e.target.value);
-            this.state[name] = v;
             value.textContent = v.toFixed(2);
+
+            // Debounce the state update
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                this.state[name] = v;
+            }, delay);
         });
     }
 
@@ -126,17 +157,63 @@ export class UI {
         });
     }
 
+    bindMotionPresets() {
+        const select = document.getElementById('motion-preset');
+        const intensitySlider = document.getElementById('motion-intensity');
+        const intensityValue = document.getElementById('motion-intensity-value');
+        const speedSlider = document.getElementById('motion-speed');
+        const speedValue = document.getElementById('motion-speed-value');
+
+        // Populate preset options
+        select.innerHTML = '';
+        for (const [key, preset] of Object.entries(PRESETS)) {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = preset.name;
+            select.appendChild(option);
+        }
+
+        select.addEventListener('change', (e) => {
+            this.motion.setPreset(e.target.value);
+            this.updateAllSliders();
+        });
+
+        // Intensity slider
+        intensitySlider.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            this.motion.intensity = v;
+            intensityValue.textContent = v.toFixed(1);
+        });
+
+        // Speed slider
+        speedSlider.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            this.motion.speed = v;
+            speedValue.textContent = v.toFixed(1);
+        });
+    }
+
     updateAllSliders() {
         const names = ['height', 'steady', 'focus', 'zoom', 'isometric',
-                       'dolly', 'invert', 'quality', 'smoothing'];
+                       'dolly', 'invert', 'quality', 'smoothing', 'edgeFix', 'ssaa'];
 
         for (const name of names) {
             const slider = document.getElementById(`${name}-slider`);
             const value = document.getElementById(`${name}-value`);
             slider.value = this.state[name];
-            value.textContent = this.state[name].toFixed(2);
+            value.textContent = name === 'zoom' ? this.state[name] : this.state[name].toFixed(2);
         }
 
         document.getElementById('mirror-checkbox').checked = this.state.mirror;
+    }
+
+    // Sync zoom slider with state (called from render loop for mouse wheel sync)
+    syncZoomSlider() {
+        const slider = document.getElementById('zoom-slider');
+        const value = document.getElementById('zoom-value');
+        if (parseFloat(slider.value) !== this.state.zoom) {
+            slider.value = this.state.zoom;
+            value.textContent = this.state.zoom;
+        }
     }
 }

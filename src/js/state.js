@@ -4,12 +4,14 @@ export class State {
         this.height = 0.2;
         this.steady = 0.3;
         this.focus = 0.0;
-        this.zoom = 1.0;
+        this.zoom = 0;          // UI value: -100 to 200 (0 = 1.0x zoom)
         this.isometric = 0.5;
         this.dolly = 0.0;
         this.invert = 0.0;
         this.mirror = true;
         this.quality = 0.5;
+        this.edgeFix = 0.2;     // Depth dilation intensity (0-1)
+        this.ssaa = 1.0;        // Supersampling AA multiplier (1-2)
 
         // Camera offset (animated)
         this.offsetX = 0.0;
@@ -48,12 +50,14 @@ export class State {
         this.height = 0.2;
         this.steady = 0.3;
         this.focus = 0.0;
-        this.zoom = 1.0;
+        this.zoom = 0;          // UI value: -100 to 200 (0 = 1.0x zoom)
         this.isometric = 0.5;
         this.dolly = 0.0;
         this.invert = 0.0;
         this.mirror = true;
         this.quality = 0.5;
+        this.edgeFix = 0.2;
+        this.ssaa = 1.0;
         this.smoothing = 0.85;
         this.offsetX = 0.0;
         this.offsetY = 0.0;

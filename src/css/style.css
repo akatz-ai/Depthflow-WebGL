@@ -134,6 +134,25 @@ body {
     border: none;
 }
 
+.select-group {
+    margin-bottom: 12px;
+}
+
+.select-group select {
+    width: 100%;
+    padding: 8px;
+    background: #2a2a4e;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #eee;
+    font-size: 0.9em;
+    cursor: pointer;
+}
+
+.select-group select:hover {
+    border-color: #7f8fff;
+}
+
 .checkbox-group {
     display: flex;
     align-items: center;

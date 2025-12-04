@@ -32,6 +32,7 @@ uniform float uDolly;       // 0.0 - 5.0, default 0.0 - ray origin push back
 uniform float uInvert;      // 0.0 - 1.0, default 0.0 - depth map inversion blend
 uniform bool uMirror;       // default true - mirror edges
 uniform float uQuality;     // 0.0 - 1.0, default 0.5 - ray march quality
+uniform float uSSAA;        // 1.0 - 2.0, default 1.0 - supersampling factor
 
 // Camera position (animated by mouse)
 uniform vec2 uOffset;       // -2.0 to 2.0 - parallax displacement
@@ -62,6 +63,14 @@ vec2 mirroredRepeat(vec2 gluv, float aspect) {
     );
 }
 
+// Convert gluv to stuv (texture coordinates)
+vec2 gluvToStuv(vec2 gluv, float aspect) {
+    vec2 scale = vec2(1.0 / aspect, 1.0);
+    vec2 stuv = (gluv * scale + 1.0) / 2.0;
+    stuv.y = 1.0 - stuv.y;  // Flip Y (WebGL vs image coordinates)
+    return stuv;
+}
+
 // Sample texture with aspect ratio correction and optional mirroring
 vec4 sampleTexture(sampler2D tex, vec2 gluv, bool mirror, float aspect) {
     // Handle mirrored repeat
@@ -69,14 +78,7 @@ vec4 sampleTexture(sampler2D tex, vec2 gluv, bool mirror, float aspect) {
         gluv = mirroredRepeat(gluv, aspect);
     }
 
-    // Convert gluv to stuv with aspect ratio correction
-    // gluv is in range (-aspect, -1) to (aspect, 1)
-    // We need to map to (0, 0) to (1, 1) accounting for image aspect
-    vec2 scale = vec2(1.0 / aspect, 1.0);
-    vec2 stuv = (gluv * scale + 1.0) / 2.0;
-    stuv.y = 1.0 - stuv.y;  // Flip Y (WebGL vs image coordinates)
-
-    return texture(tex, stuv);
+    return texture(tex, gluvToStuv(gluv, aspect));
 }
 
 // ============================================
@@ -212,15 +214,45 @@ DepthResult computeParallax(vec2 screenGluv) {
 // ============================================
 
 void main() {
-    // Compute parallax-adjusted UV coordinates
-    DepthResult depth = computeParallax(vGluv);
+    // SSAA: Supersampling anti-aliasing
+    // When ssaa > 1, we sample multiple times per pixel and average
+    if (uSSAA <= 1.0) {
+        // No SSAA - single sample
+        DepthResult depth = computeParallax(vGluv);
+        if (depth.outOfBounds) {
+            fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+            return;
+        }
+        fragColor = sampleTexture(uImage, depth.gluv, uMirror, uImageAspect);
+    } else {
+        // SSAA enabled - sample multiple points within the pixel
+        vec4 color = vec4(0.0);
+        float totalSamples = 0.0;
+        int samples = int(uSSAA);
 
-    // Handle out of bounds
-    if (depth.outOfBounds) {
-        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-        return;
+        // Pixel size in gluv space
+        float screenAspect = uResolution.x / uResolution.y;
+        vec2 pixelSize = vec2(2.0 * screenAspect, 2.0) / uResolution;
+
+        // Jittered grid sampling within the pixel
+        for (int y = 0; y < samples; y++) {
+            for (int x = 0; x < samples; x++) {
+                // Offset within pixel (-0.5 to 0.5)
+                vec2 offset = (vec2(float(x), float(y)) + 0.5) / float(samples) - 0.5;
+                vec2 sampleGluv = vGluv + offset * pixelSize;
+
+                DepthResult depth = computeParallax(sampleGluv);
+                if (!depth.outOfBounds) {
+                    color += sampleTexture(uImage, depth.gluv, uMirror, uImageAspect);
+                    totalSamples += 1.0;
+                }
+            }
+        }
+
+        if (totalSamples > 0.0) {
+            fragColor = color / totalSamples;
+        } else {
+            fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        }
     }
-
-    // Sample the color texture at the parallax-adjusted UV
-    fragColor = sampleTexture(uImage, depth.gluv, uMirror, uImageAspect);
 }
