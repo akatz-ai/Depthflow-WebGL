@@ -23,6 +23,10 @@ class TwoLayerDepthDemo {
         this.originalImage = null;
         this.depthMap = null;
         this.modelsLoaded = false;
+
+        // Mobile detection
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                        (navigator.maxTouchPoints > 0 && window.innerWidth < 1024);
     }
 
     async init() {
@@ -34,11 +38,109 @@ class TwoLayerDepthDemo {
             this.setupFileHandlers();
             this.startRenderLoop();
 
-            this.updateStatus('Ready! Load an image to begin, or load models for AI processing.');
+            // Mobile detection - disable AI buttons, set defaults, setup menu
+            if (this.isMobile) {
+                this.disableAIButtons();
+                this.setupMobileMenu();
+                // Set layer blend to 0 on mobile for better performance
+                this.state.layerBlend = 0.0;
+                // Sync the slider
+                const layerBlendSlider = document.getElementById('layerBlend');
+                const layerBlendValue = document.getElementById('layerBlendValue');
+                if (layerBlendSlider) layerBlendSlider.value = 0;
+                if (layerBlendValue) layerBlendValue.textContent = '0.00';
+                this.updateStatus('Mobile mode: Drag to explore parallax effect.');
+            }
+
+            // Load default demo images
+            await this.loadDefaultImages();
+
+            if (!this.isMobile) {
+                this.updateStatus('Demo loaded! Drag to move camera. Use AI buttons to process your own images.');
+            }
             console.log('Two-Layer Depth Demo initialized');
         } catch (err) {
             console.error('Initialization failed:', err);
             this.updateStatus('Failed to initialize: ' + err.message);
+        }
+    }
+
+    disableAIButtons() {
+        const aiButtons = ['loadModelsBtn', 'processBtn', 'estimateDepthBtn', 'processDepthBtn'];
+        for (const id of aiButtons) {
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+                btn.title = 'AI processing not available on mobile';
+            }
+        }
+    }
+
+    setupMobileMenu() {
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+
+        if (!menuToggle || !sidebar || !overlay) return;
+
+        const openMenu = () => {
+            sidebar.classList.add('open');
+            overlay.classList.add('visible');
+            menuToggle.textContent = '✕';
+        };
+
+        const closeMenu = () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('visible');
+            menuToggle.textContent = '☰';
+        };
+
+        menuToggle.addEventListener('click', () => {
+            if (sidebar.classList.contains('open')) {
+                closeMenu();
+            } else {
+                openMenu();
+            }
+        });
+
+        overlay.addEventListener('click', closeMenu);
+
+        // Close menu when pressing escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+                closeMenu();
+            }
+        });
+    }
+
+    async loadDefaultImages() {
+        try {
+            this.updateStatus('Loading demo images...');
+
+            // Load default color image
+            const imageResponse = await fetch('assets/default-image.png');
+            const imageBlob = await imageResponse.blob();
+            this.originalImage = await this.loadImageAsCanvas(imageBlob);
+            this.renderer.imageAspect = this.originalImage.width / this.originalImage.height;
+            this.renderer.uploadTexture('image', this.originalImage);
+
+            // Load default depth map
+            const depthResponse = await fetch('assets/default-depth.png');
+            const depthBlob = await depthResponse.blob();
+            const depthImg = await createImageBitmap(depthBlob);
+            const depthCanvas = document.createElement('canvas');
+            depthCanvas.width = depthImg.width;
+            depthCanvas.height = depthImg.height;
+            depthCanvas.getContext('2d').drawImage(depthImg, 0, 0);
+            this.depthMap = depthCanvas.getContext('2d').getImageData(0, 0, depthImg.width, depthImg.height);
+
+            this.renderer.loadDepthFromImageData(this.depthMap);
+
+            console.log('Default images loaded');
+        } catch (err) {
+            console.warn('Failed to load default images:', err);
         }
     }
 
@@ -101,6 +203,88 @@ class TwoLayerDepthDemo {
             console.error('Processing failed:', err);
             this.updateStatus('Processing failed: ' + err.message);
         }
+    }
+
+    /**
+     * Estimate depth from the loaded image using Depth Anything V2.
+     * Does NOT run inpainting - user must click "Run Inpainting" after.
+     */
+    async estimateDepth() {
+        if (!this.originalImage) {
+            this.updateStatus('Please load an image first');
+            return;
+        }
+
+        try {
+            // Load depth model if needed
+            this.updateStatus('Loading depth model (~20MB)...');
+            await this.depthEstimator.init((p) => {
+                if (p.progress) {
+                    this.updateStatus(`Loading depth model: ${Math.round(p.progress)}%`);
+                }
+            });
+
+            // Need to get the original file for depth estimation
+            // Convert canvas back to blob
+            this.updateStatus('Estimating depth...');
+            const blob = await new Promise(resolve =>
+                this.originalImage.toBlob(resolve, 'image/png')
+            );
+
+            const depthImage = await this.depthEstimator.estimate(blob);
+            this.depthMap = this.depthEstimator.toImageData(depthImage);
+
+            // Upload to renderer for visualization
+            this.renderer.loadDepthFromImageData(this.depthMap);
+
+            this.updateStatus('Depth estimated! Click "Run Inpainting" to generate background.');
+        } catch (err) {
+            console.error('Depth estimation failed:', err);
+            this.updateStatus('Depth estimation failed: ' + err.message);
+        }
+    }
+
+    /**
+     * Process an existing depth map with LaMa inpainting.
+     * Use this when you've loaded your own depth map and want to run inpainting.
+     */
+    async processDepthMap() {
+        if (!this.originalImage) {
+            this.updateStatus('Please load a color image first');
+            return;
+        }
+        if (!this.depthMap) {
+            this.updateStatus('Please load a depth map first');
+            return;
+        }
+
+        // Load only LaMa model if needed (skip depth estimation)
+        if (!this.modelsLoaded) {
+            try {
+                this.updateStatus('Downloading LaMa model (~363MB)...');
+                await this.inpainter.downloadModel((p) => {
+                    this.updateStatus(`Downloading LaMa: ${p.progress}%`);
+                });
+
+                this.updateStatus('Creating LaMa session...');
+                const result = await this.inpainter.createSession();
+
+                if (result.success) {
+                    this.modelsLoaded = true;
+                    this.updateStatus(`LaMa loaded on ${result.device}. Processing...`);
+                } else {
+                    this.updateStatus('Failed to create LaMa session');
+                    return;
+                }
+            } catch (err) {
+                console.error('LaMa loading failed:', err);
+                this.updateStatus('LaMa loading failed: ' + err.message);
+                return;
+            }
+        }
+
+        // Run the layer processing pipeline
+        await this.processLayers();
     }
 
     async processLayers() {
@@ -211,14 +395,19 @@ class TwoLayerDepthDemo {
         loadModelsBtn?.addEventListener('click', () => this.loadModels());
         processBtn?.addEventListener('click', () => this.processLayers());
 
+        // Estimate depth button - runs depth estimation only
+        const estimateDepthBtn = document.getElementById('estimateDepthBtn');
+        estimateDepthBtn?.addEventListener('click', () => this.estimateDepth());
+
+        // Process depth map button - runs inpainting on existing depth map
+        const processDepthBtn = document.getElementById('processDepthBtn');
+        processDepthBtn?.addEventListener('click', () => this.processDepthMap());
+
         imageInput?.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
-                if (this.modelsLoaded) {
-                    await this.processImage(file);
-                } else {
-                    await this.loadImageOnly(file);
-                }
+                // Always just load the image - user can manually trigger processing
+                await this.loadImageOnly(file);
             }
         });
 
@@ -254,11 +443,8 @@ class TwoLayerDepthDemo {
                     if (name.includes('depth') || name.includes('_d.') || name.includes('-d.')) {
                         await this.loadDepth(file);
                     } else {
-                        if (this.modelsLoaded) {
-                            await this.processImage(file);
-                        } else {
-                            await this.loadImageOnly(file);
-                        }
+                        // Always just load the image - user can manually trigger processing
+                        await this.loadImageOnly(file);
                     }
                 }
             });

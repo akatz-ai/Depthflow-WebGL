@@ -20,6 +20,7 @@ export class State {
         // Depth processing parameters
         this.foregroundThreshold = 0.4;
         this.maskDilation = 5;
+        this.edgeFix = 0.2;  // Depth dilation intensity (0-1), reduces edge artifacts
 
         // Camera offset (animated)
         this.offsetX = 0.0;
@@ -68,6 +69,7 @@ export class State {
         this.blendSoftness = 0.5;
         this.foregroundThreshold = 0.4;
         this.maskDilation = 5;
+        this.edgeFix = 0.2;
         this.visualization = 0;
         this.smoothing = 0.85;
         this.offsetX = 0.0;

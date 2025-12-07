@@ -34,6 +34,9 @@ export class UI {
             { id: 'smoothing', prop: 'smoothing', display: v => v.toFixed(2) },
         ];
 
+        // Debounced sliders (for expensive operations like depth reprocessing)
+        this.bindSliderDebounced('edgeFix', 0, 1.0, 0.1, 150);
+
         for (const cfg of sliders) {
             const slider = document.getElementById(cfg.id);
             const display = document.getElementById(cfg.id + 'Value');
@@ -96,6 +99,39 @@ export class UI {
         }
     }
 
+    /**
+     * Bind a slider with debounced state updates (for expensive operations)
+     * @param {string} name - Slider ID and state property name
+     * @param {number} min - Minimum value
+     * @param {number} max - Maximum value
+     * @param {number} step - Step value
+     * @param {number} delay - Debounce delay in ms
+     */
+    bindSliderDebounced(name, min, max, step, delay) {
+        const slider = document.getElementById(name);
+        const value = document.getElementById(name + 'Value');
+
+        if (!slider) return;
+
+        slider.min = min;
+        slider.max = max;
+        slider.step = step;
+        slider.value = this.state[name];
+        if (value) value.textContent = this.state[name].toFixed(2);
+
+        let timeout = null;
+        slider.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            if (value) value.textContent = v.toFixed(2);
+
+            // Debounce the state update to avoid expensive reprocessing during drag
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                this.state[name] = v;
+            }, delay);
+        });
+    }
+
     updateAllDisplays() {
         const sliders = [
             { id: 'height', prop: 'height', display: v => v.toFixed(2) },
@@ -110,6 +146,7 @@ export class UI {
             { id: 'blendSoftness', prop: 'blendSoftness', display: v => v.toFixed(2) },
             { id: 'foregroundThreshold', prop: 'foregroundThreshold', display: v => v.toFixed(2) },
             { id: 'maskDilation', prop: 'maskDilation', display: v => `${v}px` },
+            { id: 'edgeFix', prop: 'edgeFix', display: v => v.toFixed(2) },
             { id: 'smoothing', prop: 'smoothing', display: v => v.toFixed(2) },
         ];
 

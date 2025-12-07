@@ -18,6 +18,10 @@ export class Renderer {
         this.depthProcessor = new DepthProcessor();
         this.originalDepth = null;
         this.lastProcessParams = null;
+
+        // Edge fix processing (morphological dilation)
+        this.processedForegroundDepth = null;  // Foreground depth before edge fix
+        this.lastEdgeFix = -1;  // Track last edge fix value to avoid redundant processing
     }
 
     async init() {
@@ -161,14 +165,84 @@ export class Renderer {
 
         console.log(`Depth processing took ${(performance.now() - startTime).toFixed(0)}ms`);
 
-        this.uploadImageDataTexture('depth', layers.foreground);
+        // Store processed foreground for edge fix processing
+        this.processedForegroundDepth = layers.foreground;
+        this.lastEdgeFix = -1;  // Force edge fix reprocessing
+
         this.uploadImageDataTexture('depthBG', layers.background);
         this.uploadImageDataTexture('mask', layers.mask);
+
+        // Apply edge fix (dilation) to foreground depth
+        this.applyEdgeFix();
+    }
+
+    /**
+     * Apply morphological dilation to foreground depth map.
+     * This expands foreground edges to reduce parallax stretching artifacts.
+     */
+    applyEdgeFix() {
+        if (!this.processedForegroundDepth) return;
+
+        const edgeFix = this.state.edgeFix;
+
+        // Skip if edgeFix hasn't changed
+        if (edgeFix === this.lastEdgeFix) return;
+        this.lastEdgeFix = edgeFix;
+
+        const { width, height, data } = this.processedForegroundDepth;
+
+        if (edgeFix <= 0) {
+            // No dilation, use original processed depth
+            this.uploadImageDataTexture('depth', this.processedForegroundDepth);
+            return;
+        }
+
+        console.log(`Applying edge fix with intensity ${edgeFix.toFixed(2)}...`);
+        const startTime = performance.now();
+
+        // Create output buffer
+        const output = new ImageData(width, height);
+        const radius = Math.ceil(edgeFix * 10);  // Scale 0-1 to 0-10 pixel radius
+
+        // Morphological dilation: take max depth in circular kernel
+        // This expands bright (foreground) regions into dark (background) regions
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                let maxVal = 0;
+
+                // Sample circular kernel
+                for (let ky = -radius; ky <= radius; ky++) {
+                    for (let kx = -radius; kx <= radius; kx++) {
+                        // Check if within circular kernel
+                        if (kx * kx + ky * ky <= radius * radius) {
+                            const sx = Math.min(Math.max(x + kx, 0), width - 1);
+                            const sy = Math.min(Math.max(y + ky, 0), height - 1);
+                            const idx = (sy * width + sx) * 4;
+                            maxVal = Math.max(maxVal, data[idx]);
+                        }
+                    }
+                }
+
+                const outIdx = (y * width + x) * 4;
+                output.data[outIdx] = maxVal;
+                output.data[outIdx + 1] = maxVal;
+                output.data[outIdx + 2] = maxVal;
+                output.data[outIdx + 3] = 255;
+            }
+        }
+
+        console.log(`Edge fix took ${(performance.now() - startTime).toFixed(0)}ms`);
+        this.uploadImageDataTexture('depth', output);
     }
 
     loadLayers({ image, depth, imageBG, depthBG, mask }) {
         if (image) this.uploadTexture('image', image);
-        if (depth) this.uploadImageDataTexture('depth', depth);
+        if (depth) {
+            // Store for edge fix processing
+            this.processedForegroundDepth = depth;
+            this.lastEdgeFix = -1;  // Force edge fix reprocessing
+            this.applyEdgeFix();
+        }
         if (imageBG) this.uploadTexture('imageBG', imageBG);
         if (depthBG) this.uploadImageDataTexture('depthBG', depthBG);
         if (mask) this.uploadImageDataTexture('mask', mask);
@@ -226,7 +300,11 @@ export class Renderer {
         const gl = this.gl;
         const s = this.state;
 
+        // Check if depth layers need reprocessing
         this.processDepthLayers();
+
+        // Check if edge fix needs to be (re)applied
+        this.applyEdgeFix();
 
         gl.clearColor(0, 0, 0, 1);
         gl.clear(gl.COLOR_BUFFER_BIT);
