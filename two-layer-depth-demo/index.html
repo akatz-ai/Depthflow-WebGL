@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Two-Layer Depth Parallax with LaMa Inpainting</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+
+        .sidebar {
+            width: 340px;
+            background: #151515;
+            border-left: 1px solid #2a2a2a;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 12px;
+        }
+
+        .control {
+            margin-bottom: 12px;
+        }
+
+        .control-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .control label {
+            font-size: 13px;
+            color: #ccc;
+        }
+
+        .control-value {
+            font-size: 12px;
+            color: #4a9eff;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            -webkit-appearance: none;
+            background: #333;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #4a9eff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #6ab0ff;
+        }
+
+        .checkbox-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #4a9eff;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: #222;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4a9eff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #3a8eef;
+        }
+
+        button.secondary {
+            background: #333;
+        }
+
+        button.secondary:hover {
+            background: #444;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .button-group button {
+            flex: 1;
+        }
+
+        .file-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-btn {
+            display: block;
+            padding: 10px;
+            background: #222;
+            border: 1px dashed #444;
+            color: #999;
+            text-align: center;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .file-input-wrapper:hover .file-input-btn {
+            border-color: #4a9eff;
+            color: #4a9eff;
+        }
+
+        #dropZone {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            background: rgba(74, 158, 255, 0);
+            transition: background 0.2s;
+        }
+
+        #dropZone.dragover {
+            background: rgba(74, 158, 255, 0.1);
+            pointer-events: auto;
+        }
+
+        #dropZone.dragover::after {
+            content: 'Drop image or depth map';
+            color: #4a9eff;
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        #status {
+            font-size: 12px;
+            color: #666;
+            padding: 8px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            text-align: center;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .help-text {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
+        .highlight-section {
+            background: #1a2030;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+
+        .highlight-section .section-title {
+            color: #4a9eff;
+        }
+
+        .ai-section {
+            background: #201a30;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+
+        .ai-section .section-title {
+            color: #a855f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="canvas-container">
+            <canvas id="canvas"></canvas>
+            <div id="dropZone"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="section">
+                <div class="section-title">Two-Layer Depth Parallax</div>
+                <p class="help-text">
+                    Uses AI (Depth Anything V2 + LaMa) to generate background content
+                    behind foreground objects, eliminating edge stretching artifacts.
+                    Drag on canvas to move camera.
+                </p>
+            </div>
+
+            <div class="ai-section">
+                <div class="section-title">AI Processing</div>
+                <div class="button-group" style="margin-bottom: 12px;">
+                    <button id="loadModelsBtn">Load Models</button>
+                    <button id="processBtn" class="secondary">Re-process</button>
+                </div>
+                <p class="help-text">
+                    Load models (~383MB total) to enable automatic depth estimation
+                    and AI inpainting. Models are cached in browser storage.
+                </p>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Load Images</div>
+                <div class="file-inputs">
+                    <div class="file-input-wrapper">
+                        <input type="file" id="imageInput" accept="image/*">
+                        <span class="file-input-btn">Choose Color Image</span>
+                    </div>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="depthInput" accept="image/*">
+                        <span class="file-input-btn">Choose Depth Map (optional)</span>
+                    </div>
+                </div>
+                <p class="help-text">Or drag & drop files onto the canvas</p>
+                <div id="status">Ready! Load an image to begin.</div>
+            </div>
+
+            <div class="highlight-section">
+                <div class="section-title">Two-Layer Blending</div>
+                <p class="help-text" style="margin-bottom: 12px;">
+                    Controls how the AI-inpainted background blends with
+                    the foreground based on real-time steepness detection.
+                </p>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Layer Blend</label>
+                        <span class="control-value" id="layerBlendValue">1.00</span>
+                    </div>
+                    <input type="range" id="layerBlend" min="0" max="1" step="0.01" value="1">
+                    <p class="help-text">0 = disabled (raw parallax), 1 = full two-layer</p>
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Steepness Limit</label>
+                        <span class="control-value" id="steepnessLimitValue">1.00</span>
+                    </div>
+                    <input type="range" id="steepnessLimit" min="0.1" max="5" step="0.1" value="1">
+                    <p class="help-text">Threshold for switching to background layer</p>
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Blend Softness</label>
+                        <span class="control-value" id="blendSoftnessValue">0.50</span>
+                    </div>
+                    <input type="range" id="blendSoftness" min="0" max="2" step="0.05" value="0.5">
+                    <p class="help-text">Smoothness of FG/BG transition</p>
+                </div>
+
+                <div class="control">
+                    <label>Visualization</label>
+                    <select id="visualization">
+                        <option value="0">Normal Render</option>
+                        <option value="1">Depth Map (FG)</option>
+                        <option value="2">Depth Map (BG Inpainted)</option>
+                        <option value="3">Foreground Mask</option>
+                        <option value="4">Depth Difference</option>
+                        <option value="5">Steepness Heatmap</option>
+                        <option value="6">Surface Normals</option>
+                        <option value="7">Background Image Only</option>
+                        <option value="8">Raw Parallax (No Blend)</option>
+                        <option value="9">Side-by-Side FG/BG</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Depth Processing</div>
+                <p class="help-text" style="margin-bottom: 12px;">
+                    Controls for foreground mask extraction.
+                </p>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>FG Threshold</label>
+                        <span class="control-value" id="foregroundThresholdValue">0.40</span>
+                    </div>
+                    <input type="range" id="foregroundThreshold" min="0.1" max="0.9" step="0.01" value="0.4">
+                    <p class="help-text">Depth value above which = foreground</p>
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Mask Dilation</label>
+                        <span class="control-value" id="maskDilationValue">5px</span>
+                    </div>
+                    <input type="range" id="maskDilation" min="0" max="15" step="1" value="5">
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Parallax Settings</div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Height</label>
+                        <span class="control-value" id="heightValue">0.25</span>
+                    </div>
+                    <input type="range" id="height" min="0" max="0.5" step="0.01" value="0.25">
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Steady Point</label>
+                        <span class="control-value" id="steadyValue">0.30</span>
+                    </div>
+                    <input type="range" id="steady" min="0" max="1" step="0.01" value="0.3">
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Focus</label>
+                        <span class="control-value" id="focusValue">0.00</span>
+                    </div>
+                    <input type="range" id="focus" min="0" max="1" step="0.01" value="0">
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Zoom</label>
+                        <span class="control-value" id="zoomValue">1.00x</span>
+                    </div>
+                    <input type="range" id="zoom" min="-100" max="200" step="1" value="0">
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Isometric</label>
+                        <span class="control-value" id="isometricValue">0.50</span>
+                    </div>
+                    <input type="range" id="isometric" min="0" max="1" step="0.01" value="0.5">
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Dolly</label>
+                        <span class="control-value" id="dollyValue">0.00</span>
+                    </div>
+                    <input type="range" id="dolly" min="0" max="3" step="0.01" value="0">
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Quality</label>
+                        <span class="control-value" id="qualityValue">0.60</span>
+                    </div>
+                    <input type="range" id="quality" min="0" max="1" step="0.01" value="0.6">
+                </div>
+
+                <div class="control">
+                    <div class="control-header">
+                        <label>Smoothing</label>
+                        <span class="control-value" id="smoothingValue">0.85</span>
+                    </div>
+                    <input type="range" id="smoothing" min="0" max="0.99" step="0.01" value="0.85">
+                </div>
+
+                <div class="control checkbox-control">
+                    <input type="checkbox" id="mirror" checked>
+                    <label for="mirror">Mirror edges</label>
+                </div>
+
+                <div class="control checkbox-control">
+                    <input type="checkbox" id="invert">
+                    <label for="invert">Invert depth</label>
+                </div>
+            </div>
+
+            <div class="section">
+                <button id="resetBtn" class="secondary">Reset All Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="src/js/main.js"></script>
+</body>
+</html>
