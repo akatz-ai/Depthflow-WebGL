@@ -73,8 +73,9 @@ export class Inpainter {
     }
 
     async createSession() {
-        // Try CPU first - WebGPU has compatibility issues with LaMa model on some browsers
-        for (const ep of ['cpu', 'webgpu']) {
+        // Try WebGPU first for better performance, fall back to CPU if needed
+        // Note: Safari/Firefox may have issues with multiple EPs, so we try one at a time
+        for (const ep of ['webgpu', 'cpu']) {
             try {
                 this.session = await ort.InferenceSession.create(
                     this.modelBuffer,
