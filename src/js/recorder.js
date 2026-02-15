@@ -46,6 +46,16 @@ export class Recorder {
         this.recordedMimeType = 'video/webm';
 
         this.fadeAnimationToken = 0;
+
+        // GIF recording state
+        this.gifRecording = false;
+        this.gifFrames = null;
+        this.gifOffscreen = null;
+        this.gifOffCtx = null;
+        this.gifDoneResolve = null;
+        this.gifFrameDelay = 0;
+        this.gifTotalFrames = 0;
+        this.gifCapturedCount = 0;
     }
 
     initOverlay() {
@@ -343,6 +353,14 @@ export class Recorder {
             this.recordingProgress = null;
             this.recordingStartTime = 0;
             this.recordingDuration = 0;
+            this.gifRecording = false;
+            this.gifFrames = null;
+            this.gifOffscreen = null;
+            this.gifOffCtx = null;
+            this.gifDoneResolve = null;
+            this.gifFrameDelay = 0;
+            this.gifTotalFrames = 0;
+            this.gifCapturedCount = 0;
         }
     }
 
@@ -411,37 +429,38 @@ export class Recorder {
     }
 
     async recordGif(offscreen, offCtx, duration) {
+        // GIF frames are captured from the main render loop (via captureGifFrame),
+        // then encoded all at once after recording finishes.
+        this.gifFrames = [];
+        this.gifOffscreen = offscreen;
+        this.gifOffCtx = offCtx;
+        this.gifFrameDelay = 1000 / this.fps;
+        this.gifTotalFrames = Math.max(1, Math.ceil(duration * this.fps));
+        this.gifCapturedCount = 0;
+        this.gifRecording = true;
+
+        // Wait for the main render loop to capture all frames
+        await new Promise((resolve) => {
+            this.gifDoneResolve = resolve;
+        });
+        this.gifRecording = false;
+        this.gifDoneResolve = null;
+
+        if (this.recordingProgress) {
+            this.recordingProgress({ phase: 'encoding', elapsedSec: duration, totalSec: duration });
+        }
+
+        // Encode all captured frames
         const gif = new window.GIF({
             workers: 2,
             quality: 10,
             width: offscreen.width,
             height: offscreen.height,
-            workerScript: 'https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js'
+            workerScript: 'src/vendor/gif.worker.js'
         });
 
-        const totalFrames = Math.ceil(duration * this.fps);
-        const frameDelay = 1000 / this.fps;
-
-        for (let i = 0; i < totalFrames; i++) {
-            await new Promise((resolve) => requestAnimationFrame(resolve));
-
-            const { sx, sy, sw, sh } = this.getRecordingRegionPixels();
-            offCtx.drawImage(this.canvas, sx, sy, sw, sh, 0, 0, offscreen.width, offscreen.height);
-
-            gif.addFrame(offCtx, { copy: true, delay: frameDelay });
-
-            if (this.recordingProgress) {
-                const elapsedSec = Math.min((i + 1) * frameDelay / 1000, duration);
-                this.recordingProgress({
-                    phase: 'recording',
-                    elapsedSec,
-                    totalSec: duration
-                });
-            }
-        }
-
-        if (this.recordingProgress) {
-            this.recordingProgress({ phase: 'encoding', elapsedSec: duration, totalSec: duration });
+        for (const frame of this.gifFrames) {
+            gif.addFrame(frame, { delay: this.gifFrameDelay });
         }
 
         await new Promise((resolve) => {
@@ -451,6 +470,15 @@ export class Recorder {
             });
             gif.render();
         });
+
+        this.gifFrames = null;
+        this.gifOffscreen = null;
+        this.gifOffCtx = null;
+        this.gifDoneResolve = null;
+        this.gifRecording = false;
+        this.gifFrameDelay = 0;
+        this.gifTotalFrames = 0;
+        this.gifCapturedCount = 0;
     }
 
     captureFrame() {
@@ -458,11 +486,53 @@ export class Recorder {
             return false;
         }
 
+        const elapsed = performance.now() - this.recordingStartTime;
+
+        // GIF frame capture: sample at this.fps rate from the render loop
+        if (this.gifRecording) {
+            const framePeriod = 1000 / this.fps;
+            const totalFrames = this.gifTotalFrames || Math.max(1, Math.ceil((this.recordingDuration / 1000) * this.fps));
+
+            while (this.gifCapturedCount < totalFrames && elapsed >= this.gifCapturedCount * framePeriod) {
+                const { sx, sy, sw, sh } = this.getRecordingRegionPixels();
+                this.gifOffCtx.drawImage(
+                    this.canvas, sx, sy, sw, sh,
+                    0, 0, this.gifOffscreen.width, this.gifOffscreen.height
+                );
+
+                // Copy the pixel data for this frame (gif.js needs ImageData)
+                const imageData = this.gifOffCtx.getImageData(
+                    0, 0, this.gifOffscreen.width, this.gifOffscreen.height
+                );
+                this.gifFrames.push(imageData);
+                this.gifCapturedCount += 1;
+            }
+
+            if (this.recordingProgress) {
+                const recordedMs = Math.min(this.gifCapturedCount * framePeriod, this.recordingDuration);
+                this.recordingProgress({
+                    phase: 'recording',
+                    elapsedSec: recordedMs / 1000,
+                    totalSec: this.recordingDuration / 1000
+                });
+            }
+
+            if (this.gifCapturedCount >= totalFrames) {
+                if (this.gifDoneResolve) {
+                    const resolve = this.gifDoneResolve;
+                    this.gifDoneResolve = null;
+                    resolve();
+                }
+                return false;
+            }
+
+            return true;
+        }
+
+        // Video frame capture
         if (!this.mediaRecorder) {
             return false;
         }
-
-        const elapsed = performance.now() - this.recordingStartTime;
 
         if (elapsed >= this.recordingDuration) {
             if (this.recordingProgress) {

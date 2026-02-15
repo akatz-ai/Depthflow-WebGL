@@ -387,11 +387,13 @@ export class UI {
             this.showLoadingOverlay(`Recording... 0.0s / ${total.toFixed(1)}s`);
 
             try {
+                let exportPhase = 'recording';
                 await this.recorder.startRecording((progress) => {
-                    if (progress.phase === 'recording') {
-                        this.showLoadingOverlay(`Recording... ${progress.elapsedSec.toFixed(1)}s / ${progress.totalSec.toFixed(1)}s`);
-                    } else if (progress.phase === 'encoding') {
+                    if (progress.phase === 'encoding') {
+                        exportPhase = 'encoding';
                         this.showLoadingOverlay('Encoding GIF...');
+                    } else if (progress.phase === 'recording' && exportPhase !== 'encoding') {
+                        this.showLoadingOverlay(`Recording... ${progress.elapsedSec.toFixed(1)}s / ${progress.totalSec.toFixed(1)}s`);
                     }
                 });
             } catch (err) {
