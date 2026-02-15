@@ -13,6 +13,7 @@ body {
 
 .container {
     display: flex;
+    position: relative;
     width: 100vw;
     height: 100vh;
 }
@@ -20,6 +21,14 @@ body {
 #canvas {
     flex: 1;
     cursor: grab;
+}
+
+.recording-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 10;
 }
 
 #canvas:active {
@@ -138,6 +147,13 @@ body {
     margin-bottom: 12px;
 }
 
+.select-group label {
+    display: block;
+    font-size: 0.85em;
+    margin-bottom: 5px;
+    color: #aaa;
+}
+
 .select-group select {
     width: 100%;
     padding: 8px;
@@ -181,6 +197,43 @@ button {
 
 button:hover {
     background: #9faeff;
+}
+
+.export-duration {
+    margin-top: 2px;
+    margin-bottom: 8px;
+    font-size: 0.82em;
+    color: #9aa0bf;
+}
+
+.export-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.export-buttons button {
+    flex: 1;
+}
+
+.btn-secondary {
+    background: #2a2a4e;
+    color: #7f8fff;
+    border: 1px solid #7f8fff;
+}
+
+.btn-secondary:hover {
+    background: #3a3a5e;
+}
+
+.btn-secondary.active {
+    background: #7f8fff;
+    color: #1a1a2e;
+}
+
+.btn-primary {
+    background: #7f8fff;
+    color: #1a1a2e;
 }
 
 .instructions {

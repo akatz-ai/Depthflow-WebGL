@@ -1,4 +1,5 @@
 import { PRESETS } from './motion.js';
+import { ASPECT_PRESETS } from './recorder.js';
 
 export class UI {
     constructor(state, renderer, depthEstimator, motion) {
@@ -9,6 +10,9 @@ export class UI {
         this.autoDepthEnabled = true;
         this.devMode = new URLSearchParams(window.location.search).has('dev');
         this.state.devMode = this.devMode;
+        this.recorder = null;
+        this.initialized = false;
+        this.exportControlsBound = false;
     }
 
     init() {
@@ -64,6 +68,18 @@ export class UI {
             controls.classList.toggle('hidden');
             toggleBtn.classList.toggle('shifted');
         });
+
+        this.initialized = true;
+        if (this.recorder) {
+            this.bindExportControls();
+        }
+    }
+
+    setRecorder(recorder) {
+        this.recorder = recorder;
+        if (this.initialized) {
+            this.bindExportControls();
+        }
     }
 
     bindImageUpload() {
@@ -258,6 +274,7 @@ export class UI {
         select.addEventListener('change', (e) => {
             this.motion.setPreset(e.target.value);
             this.updateAllSliders();
+            this.updateExportDurationText();
         });
 
         // Intensity slider
@@ -272,7 +289,149 @@ export class UI {
             const v = parseFloat(e.target.value);
             this.motion.speed = v;
             speedValue.textContent = v.toFixed(1);
+            this.updateExportDurationText();
         });
+    }
+
+    bindExportControls() {
+        if (this.exportControlsBound || !this.recorder) return;
+        this.exportControlsBound = true;
+
+        const aspectSelect = document.getElementById('aspect-ratio');
+        const loopsSlider = document.getElementById('loops-slider');
+        const loopsValue = document.getElementById('loops-value');
+        const formatSelect = document.getElementById('export-format');
+        const previewBtn = document.getElementById('preview-btn');
+        const exportBtn = document.getElementById('export-btn');
+
+        const setPreviewButtonState = (previewing) => {
+            previewBtn.classList.toggle('active', previewing);
+            previewBtn.textContent = previewing ? 'Stop Preview' : 'Preview';
+        };
+
+        const applyAspectPreset = (value, showGuides = true) => {
+            const preset = ASPECT_PRESETS[value] || ASPECT_PRESETS.full;
+
+            if (preset.w > 0 && preset.h > 0) {
+                this.recorder.aspectRatio = { w: preset.w, h: preset.h };
+            } else {
+                this.recorder.aspectRatio = { w: 0, h: 0 };
+            }
+
+            const { width, height } = this.getDefaultExportSize(this.recorder.aspectRatio);
+            this.recorder.exportWidth = width;
+            this.recorder.exportHeight = height;
+
+            if (showGuides) {
+                this.recorder.showCropGuides();
+            }
+
+            this.updateExportDurationText();
+        };
+
+        const gifOption = formatSelect.querySelector('option[value="gif"]');
+        if (gifOption && typeof window.GIF === 'undefined') {
+            gifOption.title = 'GIF export is not available in this browser session.';
+        }
+
+        this.recorder.loops = parseInt(loopsSlider.value, 10) || 1;
+        this.recorder.format = formatSelect.value;
+        loopsValue.textContent = String(this.recorder.loops);
+
+        applyAspectPreset(aspectSelect.value, false);
+
+        aspectSelect.addEventListener('change', (e) => {
+            applyAspectPreset(e.target.value, true);
+        });
+
+        loopsSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value, 10) || 1;
+            this.recorder.loops = value;
+            loopsValue.textContent = String(value);
+            this.recorder.showCropGuides();
+            this.updateExportDurationText();
+        });
+
+        formatSelect.addEventListener('change', (e) => {
+            this.recorder.format = e.target.value;
+            this.recorder.showCropGuides();
+        });
+
+        previewBtn.addEventListener('click', () => {
+            if (this.recorder.isRecording) return;
+
+            if (this.recorder.isPreviewing) {
+                this.recorder.stopPreview();
+                setPreviewButtonState(false);
+            } else {
+                this.recorder.startPreview();
+                setPreviewButtonState(true);
+            }
+        });
+
+        exportBtn.addEventListener('click', async () => {
+            if (this.recorder.isRecording) return;
+
+            if (this.recorder.isPreviewing) {
+                this.recorder.stopPreview();
+                setPreviewButtonState(false);
+            }
+
+            previewBtn.disabled = true;
+            exportBtn.disabled = true;
+            aspectSelect.disabled = true;
+            loopsSlider.disabled = true;
+            formatSelect.disabled = true;
+
+            const total = this.recorder.getRecordingDuration();
+            this.showLoadingOverlay(`Recording... 0.0s / ${total.toFixed(1)}s`);
+
+            try {
+                await this.recorder.startRecording((progress) => {
+                    if (progress.phase === 'recording') {
+                        this.showLoadingOverlay(`Recording... ${progress.elapsedSec.toFixed(1)}s / ${progress.totalSec.toFixed(1)}s`);
+                    } else if (progress.phase === 'encoding') {
+                        this.showLoadingOverlay('Encoding GIF...');
+                    }
+                });
+            } catch (err) {
+                console.error('Export failed:', err);
+                this.showLoadingOverlay('Export failed. See console for details.');
+                await new Promise((resolve) => setTimeout(resolve, 1200));
+            } finally {
+                this.hideLoadingOverlay();
+                previewBtn.disabled = false;
+                exportBtn.disabled = false;
+                aspectSelect.disabled = false;
+                loopsSlider.disabled = false;
+                formatSelect.disabled = false;
+            }
+        });
+    }
+
+    getDefaultExportSize(aspectRatio) {
+        let ratio;
+        if (aspectRatio && aspectRatio.w > 0 && aspectRatio.h > 0) {
+            ratio = aspectRatio.w / aspectRatio.h;
+        } else {
+            const rect = this.renderer.canvas.getBoundingClientRect();
+            ratio = rect.height > 0 ? rect.width / rect.height : (16 / 9);
+        }
+
+        const isLandscape = ratio > 1;
+        const width = isLandscape ? 1920 : 1080;
+        const height = Math.max(1, Math.round(width / ratio));
+        return { width, height };
+    }
+
+    updateExportDurationText() {
+        const durationEl = document.getElementById('export-duration');
+        if (!durationEl || !this.recorder) return;
+
+        const loops = Math.max(1, this.recorder.loops);
+        const label = loops === 1 ? 'loop' : 'loops';
+        const duration = this.recorder.getRecordingDuration();
+        durationEl.textContent = `Duration: ~${duration.toFixed(1)}s (${loops} ${label})`;
     }
 
     updateAllSliders() {

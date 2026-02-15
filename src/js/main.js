@@ -4,6 +4,7 @@ import { InputHandler } from './input.js';
 import { UI } from './ui.js';
 import { DepthEstimator } from './depth.js';
 import { MotionController } from './motion.js';
+import { Recorder } from './recorder.js';
 
 class DepthFlowApp {
     constructor() {
@@ -13,6 +14,7 @@ class DepthFlowApp {
         this.input = new InputHandler(this.canvas, this.state);
         this.depthEstimator = new DepthEstimator();
         this.motion = new MotionController(this.state);
+        this.recorder = new Recorder(this.canvas, this.state, this.motion);
         this.ui = new UI(this.state, this.renderer, this.depthEstimator, this.motion);
         this.lastTime = performance.now();
         this.rafId = null;
@@ -33,6 +35,8 @@ class DepthFlowApp {
         }
         await this.renderer.init();
         this.ui.init();
+        this.recorder.initOverlay();
+        this.ui.setRecorder(this.recorder);
         this.input.init();
         this.setupRenderTriggers();
         await this.loadDefaultImages();
@@ -130,6 +134,8 @@ class DepthFlowApp {
 
         this.needsRender = false;
         this.renderer.render();
+        this.recorder.captureFrame();
+        this.recorder.updatePreview();
         if (this.fpsDisplay) {
             this.lastFrameTime = frameTime;
             this.minFrameTime = Math.min(this.minFrameTime, frameTime);
@@ -149,7 +155,7 @@ class DepthFlowApp {
             }
         }
 
-        const stillActive = this.motion.running || stateChanged || (performance.now() - this.lastActivityTime) <= 100;
+        const stillActive = this.motion.running || this.recorder.isRecording || this.recorder.isPreviewing || stateChanged || (performance.now() - this.lastActivityTime) <= 100;
         if (this.needsRender || stillActive) {
             this.requestRender();
         }
