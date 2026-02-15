@@ -10,8 +10,9 @@ export class DepthEstimator {
         if (this.model || this.loading) return;
         this.loading = true;
 
+        const device = navigator.gpu ? 'webgpu' : 'wasm';
         this.model = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
-            device: 'webgpu',
+            device,
             progress_callback: onProgress
         });
 
