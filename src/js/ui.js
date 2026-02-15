@@ -7,7 +7,8 @@ export class UI {
         this.depthEstimator = depthEstimator;
         this.motion = motion;
         this.autoDepthEnabled = true;
-        this.refinementToggleBtn = null;
+        this.devMode = new URLSearchParams(window.location.search).has('dev');
+        this.state.devMode = this.devMode;
     }
 
     init() {
@@ -43,13 +44,11 @@ export class UI {
 
         // Motion presets
         this.bindMotionPresets();
-        this.createRefinementToggle();
 
         // Reset button
         document.getElementById('reset-btn').addEventListener('click', () => {
             this.state.reset();
             this.updateAllSliders();
-            this.updateRefinementToggle();
         });
 
         // Toggle controls panel
@@ -194,25 +193,6 @@ export class UI {
             this.motion.speed = v;
             speedValue.textContent = v.toFixed(1);
         });
-    }
-
-    createRefinementToggle() {
-        const toggleBtn = document.createElement('button');
-        toggleBtn.id = 'refinement-toggle';
-        toggleBtn.style.cssText = 'position:fixed;top:8px;right:8px;color:#fff;font:12px monospace;background:rgba(0,100,200,0.8);padding:6px 12px;z-index:9999;border:1px solid rgba(255,255,255,0.3);border-radius:4px;cursor:pointer;';
-        toggleBtn.addEventListener('click', () => {
-            this.state.useBinaryRefine = !this.state.useBinaryRefine;
-            this.updateRefinementToggle();
-        });
-        this.refinementToggleBtn = toggleBtn;
-        this.updateRefinementToggle();
-        document.body.appendChild(toggleBtn);
-    }
-
-    updateRefinementToggle() {
-        if (!this.refinementToggleBtn) return;
-        this.refinementToggleBtn.textContent = this.state.useBinaryRefine ? 'Mode: Binary Refine' : 'Mode: Legacy Fine March';
-        this.refinementToggleBtn.style.background = this.state.useBinaryRefine ? 'rgba(0,100,200,0.8)' : 'rgba(200,100,0,0.8)';
     }
 
     updateAllSliders() {

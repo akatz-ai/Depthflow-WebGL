@@ -77,7 +77,7 @@ export class Renderer {
             'uImage', 'uDepth', 'uResolution', 'uImageAspect',
             'uHeight', 'uSteady', 'uFocus', 'uZoom', 'uIsometric',
             'uDolly', 'uInvert', 'uMirror', 'uQuality',
-            'uOffset', 'uCenter', 'uOrigin', 'uSSAA', 'uUseBinaryRefine'
+            'uOffset', 'uCenter', 'uOrigin', 'uSSAA'
         ];
 
         for (const name of names) {
@@ -275,7 +275,6 @@ export class Renderer {
         gl.uniform1f(this.uniforms.uQuality, s.quality);
         const effectiveSSAA = (s.quality > 0.7 || this.dpr > 1) ? 1.0 : s.ssaa;
         gl.uniform1f(this.uniforms.uSSAA, effectiveSSAA);
-        gl.uniform1i(this.uniforms.uUseBinaryRefine, s.useBinaryRefine ? 1 : 0);
 
         // Check if edge fix needs to be reapplied
         this.applyEdgeFix();

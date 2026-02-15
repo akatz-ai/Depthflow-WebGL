@@ -10,7 +10,6 @@ export class State {
         this.invert = 0.0;
         this.mirror = true;
         this.quality = 0.5;
-        this.useBinaryRefine = true;  // default to new mode
         this.edgeFix = 0.2;     // Depth dilation intensity (0-1)
         this.ssaa = 1.0;        // Supersampling AA multiplier (1-2)
 
@@ -57,7 +56,6 @@ export class State {
         this.invert = 0.0;
         this.mirror = true;
         this.quality = 0.5;
-        this.useBinaryRefine = true;
         this.edgeFix = 0.2;
         this.ssaa = 1.0;
         this.smoothing = 0.85;

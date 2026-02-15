@@ -28,7 +28,9 @@ class DepthFlowApp {
     }
 
     async init() {
-        this.createFPSDisplay();
+        if (this.state.devMode) {
+            this.createFPSDisplay();
+        }
         await this.renderer.init();
         this.ui.init();
         this.input.init();
@@ -127,22 +129,24 @@ class DepthFlowApp {
         }
 
         this.needsRender = false;
-        this.lastFrameTime = frameTime;
-        this.minFrameTime = Math.min(this.minFrameTime, frameTime);
-        this.maxFrameTime = Math.max(this.maxFrameTime, frameTime);
         this.renderer.render();
-        this.frameCount++;
-        const elapsed = now - this.fpsTime;
-        if (elapsed >= 500) {
-            const fps = (this.frameCount / elapsed * 1000).toFixed(1);
-            const avgTime = (elapsed / this.frameCount).toFixed(1);
-            const minTime = this.minFrameTime.toFixed(1);
-            const maxTime = this.maxFrameTime === 0 ? '0.0' : this.maxFrameTime.toFixed(1);
-            this.fpsDisplay.textContent = `${fps} FPS | avg ${avgTime}ms | min ${minTime}ms | max ${maxTime}ms`;
-            this.frameCount = 0;
-            this.fpsTime = now;
-            this.minFrameTime = Infinity;
-            this.maxFrameTime = 0;
+        if (this.fpsDisplay) {
+            this.lastFrameTime = frameTime;
+            this.minFrameTime = Math.min(this.minFrameTime, frameTime);
+            this.maxFrameTime = Math.max(this.maxFrameTime, frameTime);
+            this.frameCount++;
+            const elapsed = now - this.fpsTime;
+            if (elapsed >= 500) {
+                const fps = (this.frameCount / elapsed * 1000).toFixed(1);
+                const avgTime = (elapsed / this.frameCount).toFixed(1);
+                const minTime = this.minFrameTime.toFixed(1);
+                const maxTime = this.maxFrameTime === 0 ? '0.0' : this.maxFrameTime.toFixed(1);
+                this.fpsDisplay.textContent = `${fps} FPS | avg ${avgTime}ms | min ${minTime}ms | max ${maxTime}ms`;
+                this.frameCount = 0;
+                this.fpsTime = now;
+                this.minFrameTime = Infinity;
+                this.maxFrameTime = 0;
+            }
         }
 
         const stillActive = this.motion.running || stateChanged || (performance.now() - this.lastActivityTime) <= 100;
