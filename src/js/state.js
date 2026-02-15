@@ -9,9 +9,9 @@ export class State {
         this.dolly = 0.0;
         this.invert = 0.0;
         this.mirror = true;
-        this.quality = 0.5;
+        this.quality = 1.0;
         this.maxResolution = 1920; // 0 = disabled (full resolution)
-        this.edgeFix = 0.2;     // Depth dilation intensity (0-1)
+        this.edgeFix = 1.0;     // Depth dilation intensity (0-1)
         this.ssaa = 1.0;        // Supersampling AA multiplier (1-2)
 
         // Camera offset (animated)
@@ -58,9 +58,9 @@ export class State {
         this.dolly = 0.0;
         this.invert = 0.0;
         this.mirror = true;
-        this.quality = 0.5;
+        this.quality = 1.0;
         this.maxResolution = 1920;
-        this.edgeFix = 0.2;
+        this.edgeFix = 1.0;
         this.ssaa = 1.0;
         this.smoothing = 0.85;
         this.offsetX = 0.0;

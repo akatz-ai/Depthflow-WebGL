@@ -39,7 +39,10 @@ class DepthFlowApp {
         this.ui.setRecorder(this.recorder);
         this.input.init();
         this.setupRenderTriggers();
-        await this.loadDefaultImages();
+        const restoredMedia = await this.ui.restorePersistedMedia();
+        if (!restoredMedia) {
+            await this.loadDefaultImages();
+        }
 
         // Wait for next frame to ensure canvas is properly laid out
         requestAnimationFrame(() => {

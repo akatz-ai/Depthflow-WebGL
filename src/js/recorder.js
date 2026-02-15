@@ -35,11 +35,13 @@ export class Recorder {
         this.overlay = null;
         this.overlayCtx = null;
         this.previewStartTime = null;
+        this.previewPendingStart = false;
         this.previewOriginalRunning = false;
 
         this.offscreenCanvas = null;
         this.offscreenCtx = null;
         this.recordingStartTime = 0;
+        this.recordingPendingStart = false;
         this.recordingDuration = 0;
         this.recordingOriginalRunning = false;
         this.recordingProgress = null;
@@ -56,6 +58,22 @@ export class Recorder {
         this.gifFrameDelay = 0;
         this.gifTotalFrames = 0;
         this.gifCapturedCount = 0;
+    }
+
+    snapCameraToTargets() {
+        // Prevent the first preview/recording frames from capturing smoothing convergence.
+        this.state.offsetX = this.state._targetOffsetX;
+        this.state.offsetY = this.state._targetOffsetY;
+        this.state.zoom = this.state._targetZoom;
+        this.state._lastTime = performance.now();
+    }
+
+    resetLoopToStartPose() {
+        // Evaluate motion at t=0 so preset-dependent targets/params are applied immediately.
+        this.motion.time = 0;
+        this.motion.running = true;
+        this.motion.update(0);
+        this.snapCameraToTargets();
     }
 
     initOverlay() {
@@ -231,8 +249,10 @@ export class Recorder {
         this.previewOriginalRunning = this.motion.running;
         this.isPreviewing = true;
         this.previewStartTime = null;
-        this.motion.time = 0;
-        this.motion.running = true;
+        this.previewPendingStart = true;
+        this.resetLoopToStartPose();
+        // Hold motion for one render so the start pose is shown instantly.
+        this.motion.running = false;
         this.showCropGuides();
     }
 
@@ -241,12 +261,19 @@ export class Recorder {
 
         this.isPreviewing = false;
         this.previewStartTime = null;
+        this.previewPendingStart = false;
         this.motion.running = this.previewOriginalRunning;
         this.fadeOutGuides();
     }
 
     updatePreview() {
         if (!this.isPreviewing) return;
+
+        if (this.previewPendingStart) {
+            this.previewPendingStart = false;
+            this.previewStartTime = performance.now();
+            this.motion.running = true;
+        }
 
         if (this.previewStartTime === null) {
             this.previewStartTime = performance.now();
@@ -312,8 +339,10 @@ export class Recorder {
         const duration = this.getRecordingDuration();
 
         this.recordingOriginalRunning = this.motion.running;
-        this.motion.time = 0;
-        this.motion.running = true;
+        this.recordingPendingStart = true;
+        this.resetLoopToStartPose();
+        // Hold motion for one render so the first captured frame is the loop start.
+        this.motion.running = false;
 
         const offscreen = document.createElement('canvas');
         offscreen.width = Math.max(1, Math.round(this.exportWidth));
@@ -322,6 +351,7 @@ export class Recorder {
         const offCtx = offscreen.getContext('2d', { alpha: false });
         if (!offCtx) {
             this.isRecording = false;
+            this.recordingPendingStart = false;
             this.motion.running = this.recordingOriginalRunning;
             throw new Error('Could not create recording context');
         }
@@ -329,7 +359,7 @@ export class Recorder {
         this.offscreenCanvas = offscreen;
         this.offscreenCtx = offCtx;
 
-        this.recordingStartTime = performance.now();
+        this.recordingStartTime = 0;
         this.recordingDuration = duration * 1000;
 
         try {
@@ -352,6 +382,7 @@ export class Recorder {
             this.chunks = [];
             this.recordingProgress = null;
             this.recordingStartTime = 0;
+            this.recordingPendingStart = false;
             this.recordingDuration = 0;
             this.gifRecording = false;
             this.gifFrames = null;
@@ -361,6 +392,7 @@ export class Recorder {
             this.gifFrameDelay = 0;
             this.gifTotalFrames = 0;
             this.gifCapturedCount = 0;
+            this.previewPendingStart = false;
         }
     }
 
@@ -484,6 +516,19 @@ export class Recorder {
     captureFrame() {
         if (!this.isRecording || !this.offscreenCanvas || !this.offscreenCtx) {
             return false;
+        }
+
+        if (this.recordingPendingStart) {
+            this.recordingPendingStart = false;
+            this.recordingStartTime = performance.now();
+            this.motion.running = true;
+            if (this.recordingProgress) {
+                this.recordingProgress({
+                    phase: 'recording',
+                    elapsedSec: 0,
+                    totalSec: this.recordingDuration / 1000
+                });
+            }
         }
 
         const elapsed = performance.now() - this.recordingStartTime;
