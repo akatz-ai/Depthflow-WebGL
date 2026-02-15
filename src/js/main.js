@@ -19,9 +19,13 @@ class DepthFlowApp {
         this.needsRender = true;
         this.lastActivityTime = performance.now();
         this.lastStateKey = '';
+        this.frameCount = 0;
+        this.fpsTime = performance.now();
+        this.fpsDisplay = null;
     }
 
     async init() {
+        this.createFPSDisplay();
         await this.renderer.init();
         this.ui.init();
         this.input.init();
@@ -79,6 +83,13 @@ class DepthFlowApp {
         window.addEventListener('resize', () => this.markActive());
     }
 
+    createFPSDisplay() {
+        this.fpsDisplay = document.createElement('div');
+        this.fpsDisplay.style.cssText = 'position:fixed;top:8px;left:8px;color:#0f0;font:14px monospace;background:rgba(0,0,0,0.7);padding:4px 8px;z-index:9999;pointer-events:none;border-radius:4px;';
+        this.fpsDisplay.textContent = '0.0 FPS (0.0ms)';
+        document.body.appendChild(this.fpsDisplay);
+    }
+
     buildRenderKey() {
         const s = this.state;
         const values = [
@@ -113,6 +124,15 @@ class DepthFlowApp {
 
         this.needsRender = false;
         this.renderer.render();
+        this.frameCount++;
+        const elapsed = now - this.fpsTime;
+        if (elapsed >= 500) {
+            const fps = (this.frameCount / elapsed * 1000).toFixed(1);
+            const frameTime = (elapsed / this.frameCount).toFixed(1);
+            this.fpsDisplay.textContent = `${fps} FPS (${frameTime}ms)`;
+            this.frameCount = 0;
+            this.fpsTime = now;
+        }
 
         const stillActive = this.motion.running || stateChanged || (performance.now() - this.lastActivityTime) <= 100;
         if (this.needsRender || stillActive) {

@@ -136,7 +136,6 @@ DepthResult computeParallax(vec2 screenGluv) {
     // Quality-dependent step sizes
     // Higher quality = more iterations, smaller steps
     float probeStep = 1.0 / mix(50.0, 120.0, uQuality);   // Coarse forward step
-    float fineStep = 1.0 / mix(200.0, 800.0, uQuality);   // Fine backward step
 
     // Safe starting distance: guaranteed not to hit surface at z=0
     float safe = 1.0 - uHeight;
@@ -176,24 +175,33 @@ DepthResult computeParallax(vec2 screenGluv) {
     }
 
     // ========================================
-    // Pass 2: Backward march with fine steps
-    // Refine intersection by stepping backward
+    // Pass 2: Binary refinement
+    // Bisect between last safe step and overshoot
     // ========================================
-    for (int i = 0; i < 100; i++) {
-        walk -= fineStep;
+    float lo = walk - probeStep;  // last safe position
+    float hi = walk;              // overshoot position
 
-        vec3 point = mix(rayOrigin, intersect, mix(safe, 1.0, walk));
+    for (int i = 0; i < 8; i++) {
+        float mid = (lo + hi) * 0.5;
+        vec3 point = mix(rayOrigin, intersect, mix(safe, 1.0, mid));
         hitGluv = point.xy;
 
         hitDepth = sampleTexture(uDepth, hitGluv, uMirror, uImageAspect).r;
         float surface = uHeight * mix(hitDepth, 1.0 - hitDepth, uInvert);
         float ceiling = 1.0 - point.z;
 
-        // Stop when we exit the surface
-        if (ceiling >= surface) {
-            break;  // Found precise intersection
+        if (ceiling < surface) {
+            hi = mid;  // still inside, move hi down
+        } else {
+            lo = mid;  // outside, move lo up
         }
     }
+
+    // Final sample at converged position
+    walk = lo;
+    vec3 finalPoint = mix(rayOrigin, intersect, mix(safe, 1.0, walk));
+    hitGluv = finalPoint.xy;
+    hitDepth = sampleTexture(uDepth, hitGluv, uMirror, uImageAspect).r;
 
     result.gluv = hitGluv;
     result.depthValue = hitDepth;
