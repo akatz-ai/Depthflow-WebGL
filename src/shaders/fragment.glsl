@@ -33,6 +33,7 @@ uniform float uInvert;      // 0.0 - 1.0, default 0.0 - depth map inversion blen
 uniform bool uMirror;       // default true - mirror edges
 uniform float uQuality;     // 0.0 - 1.0, default 0.5 - ray march quality
 uniform float uSSAA;        // 1.0 - 2.0, default 1.0 - supersampling factor
+uniform bool uUseBinaryRefine;  // Toggle between binary refinement and old fine march
 
 // Camera position (animated by mouse)
 uniform vec2 uOffset;       // -2.0 to 2.0 - parallax displacement
@@ -136,6 +137,7 @@ DepthResult computeParallax(vec2 screenGluv) {
     // Quality-dependent step sizes
     // Higher quality = more iterations, smaller steps
     float probeStep = 1.0 / mix(50.0, 120.0, uQuality);   // Coarse forward step
+    float fineStep = 1.0 / mix(200.0, 800.0, uQuality);   // Fine backward step (legacy mode)
 
     // Safe starting distance: guaranteed not to hit surface at z=0
     float safe = 1.0 - uHeight;
@@ -175,33 +177,50 @@ DepthResult computeParallax(vec2 screenGluv) {
     }
 
     // ========================================
-    // Pass 2: Binary refinement
-    // Bisect between last safe step and overshoot
+    // Pass 2: Refinement
     // ========================================
-    float lo = walk - probeStep;  // last safe position
-    float hi = walk;              // overshoot position
+    if (uUseBinaryRefine) {
+        // Binary refinement: 8-step bisection
+        float lo = walk - probeStep;
+        float hi = walk;
 
-    for (int i = 0; i < 8; i++) {
-        float mid = (lo + hi) * 0.5;
-        vec3 point = mix(rayOrigin, intersect, mix(safe, 1.0, mid));
-        hitGluv = point.xy;
+        for (int i = 0; i < 8; i++) {
+            float mid = (lo + hi) * 0.5;
+            vec3 point = mix(rayOrigin, intersect, mix(safe, 1.0, mid));
+            hitGluv = point.xy;
 
+            hitDepth = sampleTexture(uDepth, hitGluv, uMirror, uImageAspect).r;
+            float surface = uHeight * mix(hitDepth, 1.0 - hitDepth, uInvert);
+            float ceiling = 1.0 - point.z;
+
+            if (ceiling < surface) {
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+
+        walk = lo;
+        vec3 finalPoint = mix(rayOrigin, intersect, mix(safe, 1.0, walk));
+        hitGluv = finalPoint.xy;
         hitDepth = sampleTexture(uDepth, hitGluv, uMirror, uImageAspect).r;
-        float surface = uHeight * mix(hitDepth, 1.0 - hitDepth, uInvert);
-        float ceiling = 1.0 - point.z;
+    } else {
+        // Legacy: fine backward march
+        for (int i = 0; i < 100; i++) {
+            walk -= fineStep;
 
-        if (ceiling < surface) {
-            hi = mid;  // still inside, move hi down
-        } else {
-            lo = mid;  // outside, move lo up
+            vec3 point = mix(rayOrigin, intersect, mix(safe, 1.0, walk));
+            hitGluv = point.xy;
+
+            hitDepth = sampleTexture(uDepth, hitGluv, uMirror, uImageAspect).r;
+            float surface = uHeight * mix(hitDepth, 1.0 - hitDepth, uInvert);
+            float ceiling = 1.0 - point.z;
+
+            if (ceiling >= surface) {
+                break;
+            }
         }
     }
-
-    // Final sample at converged position
-    walk = lo;
-    vec3 finalPoint = mix(rayOrigin, intersect, mix(safe, 1.0, walk));
-    hitGluv = finalPoint.xy;
-    hitDepth = sampleTexture(uDepth, hitGluv, uMirror, uImageAspect).r;
 
     result.gluv = hitGluv;
     result.depthValue = hitDepth;
