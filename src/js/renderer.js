@@ -11,6 +11,7 @@ export class Renderer {
         // Store original depth for edge fix processing
         this.originalDepth = null;
         this.lastEdgeFix = -1;
+        this.dpr = 1;
     }
 
     async init() {
@@ -31,6 +32,7 @@ export class Renderer {
 
         this.program = this.createProgram(vertSrc, fragSrc);
         this.gl.useProgram(this.program);
+        this.gl.clearColor(0, 0, 0, 1);
 
         this.cacheUniformLocations();
         this.createQuad();
@@ -232,7 +234,8 @@ export class Renderer {
     }
 
     resize() {
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        this.dpr = dpr;
         const width = this.canvas.clientWidth * dpr;
         const height = this.canvas.clientHeight * dpr;
 
@@ -245,7 +248,6 @@ export class Renderer {
         const gl = this.gl;
         const s = this.state;
 
-        gl.clearColor(0, 0, 0, 1);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
         // Bind textures
@@ -271,7 +273,8 @@ export class Renderer {
         gl.uniform1f(this.uniforms.uInvert, s.invert);
         gl.uniform1i(this.uniforms.uMirror, s.mirror ? 1 : 0);
         gl.uniform1f(this.uniforms.uQuality, s.quality);
-        gl.uniform1f(this.uniforms.uSSAA, s.ssaa);
+        const effectiveSSAA = (s.quality > 0.7 || this.dpr > 1) ? 1.0 : s.ssaa;
+        gl.uniform1f(this.uniforms.uSSAA, effectiveSSAA);
 
         // Check if edge fix needs to be reapplied
         this.applyEdgeFix();

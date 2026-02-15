@@ -136,7 +136,7 @@ DepthResult computeParallax(vec2 screenGluv) {
     // Quality-dependent step sizes
     // Higher quality = more iterations, smaller steps
     float probeStep = 1.0 / mix(50.0, 120.0, uQuality);   // Coarse forward step
-    float fineStep = 1.0 / mix(200.0, 2000.0, uQuality);  // Fine backward step
+    float fineStep = 1.0 / mix(200.0, 800.0, uQuality);   // Fine backward step
 
     // Safe starting distance: guaranteed not to hit surface at z=0
     float safe = 1.0 - uHeight;
