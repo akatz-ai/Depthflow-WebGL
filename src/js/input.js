@@ -6,7 +6,8 @@ export class InputHandler {
         this.isRightDragging = false;
         this.lastX = 0;
         this.lastY = 0;
-        this.sensitivity = 0.003;
+        this.panSensitivity = 0.002;
+        this.orbitSensitivity = 0.004;
     }
 
     init() {
@@ -38,28 +39,28 @@ export class InputHandler {
     }
 
     onMouseMove(e) {
-        const dx = (e.clientX - this.lastX) * this.sensitivity;
-        const dy = (e.clientY - this.lastY) * this.sensitivity;
+        const dx = e.clientX - this.lastX;
+        const dy = e.clientY - this.lastY;
 
         this.lastX = e.clientX;
         this.lastY = e.clientY;
 
         if (this.isDragging) {
             // Left drag: pan the scene
-            this.state.centerX -= dx;
-            this.state.centerY += dy;
+            this.state.centerX -= dx * this.panSensitivity;
+            this.state.centerY += dy * this.panSensitivity;
         } else if (this.isRightDragging) {
             // Right drag: orbit/tilt camera angle (parallax offset)
             this.state.setTargetOffset(
-                this.state._targetOffsetX - dx,
-                this.state._targetOffsetY + dy
+                this.state._targetOffsetX - dx * this.orbitSensitivity,
+                this.state._targetOffsetY + dy * this.orbitSensitivity
             );
         }
     }
 
     onWheel(e) {
         e.preventDefault();
-        const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05;
+        const zoomFactor = e.deltaY > 0 ? 1.05 : 0.95;
         const newZoom = this.state._targetZoom * zoomFactor;
         this.state._targetZoom = Math.max(0.1, Math.min(3.0, newZoom));
     }
@@ -89,15 +90,15 @@ export class InputHandler {
         e.preventDefault();
 
         const touch = e.touches[0];
-        const dx = (touch.clientX - this.lastX) * this.sensitivity;
-        const dy = (touch.clientY - this.lastY) * this.sensitivity;
+        const dx = touch.clientX - this.lastX;
+        const dy = touch.clientY - this.lastY;
 
         this.lastX = touch.clientX;
         this.lastY = touch.clientY;
 
         // Touch drag: pan the scene
-        this.state.centerX -= dx;
-        this.state.centerY += dy;
+        this.state.centerX -= dx * this.panSensitivity;
+        this.state.centerY += dy * this.panSensitivity;
     }
 
     onTouchEnd() {

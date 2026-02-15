@@ -26,6 +26,12 @@ export class UI {
         });
         depthUploadGroup.classList.toggle('disabled', this.autoDepthEnabled);
 
+        const maxResSelect = document.getElementById('max-resolution');
+        maxResSelect.value = String(this.state.maxResolution);
+        maxResSelect.addEventListener('change', (e) => {
+            this.state.maxResolution = parseInt(e.target.value, 10);
+        });
+
         // Sliders - ranges aligned with upstream DepthFlow defaults
         this.bindSlider('height', 0, 2.0, 0.01);
         this.bindSlider('steady', 0, 1, 0.01);
@@ -66,19 +72,65 @@ export class UI {
             const file = e.target.files[0];
             if (!file) return;
 
-            await this.renderer.loadImage(file);
+            const resized = await this.resizeImage(file, this.state.maxResolution);
+            await this.renderer.loadImage(resized);
 
             if (this.autoDepthEnabled) {
-                this.showProgress('Loading AI model (~20MB)...');
-                await this.depthEstimator.init((p) => this.updateProgress(p));
+                try {
+                    this.showLoadingOverlay('Loading AI model (~20MB)...');
+                    this.showProgress('Loading AI model (~20MB)...');
+                    await this.depthEstimator.init((p) => {
+                        this.updateProgress(p);
+                        if (p.status === 'progress') {
+                            const pct = Math.round((p.loaded / p.total) * 100);
+                            this.showLoadingOverlay(`Downloading model: ${pct}%`);
+                        }
+                    });
 
-                this.showProgress('Estimating depth...');
-                const depthImage = await this.depthEstimator.estimate(file);
-                const depthData = this.depthEstimator.toImageData(depthImage);
+                    this.showLoadingOverlay('Estimating depth...');
+                    this.showProgress('Estimating depth...');
+                    const depthImage = await this.depthEstimator.estimate(resized);
+                    const depthData = this.depthEstimator.toImageData(depthImage);
 
-                this.renderer.loadDepthFromImageData(depthData);
-                this.hideProgress();
+                    this.renderer.loadDepthFromImageData(depthData);
+                } catch (err) {
+                    console.error('Depth estimation failed:', err);
+                } finally {
+                    this.hideProgress();
+                    this.hideLoadingOverlay();
+                }
             }
+        });
+    }
+
+    async resizeImage(file, maxRes) {
+        if (maxRes <= 0) return file;
+
+        const img = await createImageBitmap(file);
+        const { width, height } = img;
+
+        if (width <= maxRes && height <= maxRes) {
+            img.close();
+            return file;
+        }
+
+        const scale = maxRes / Math.max(width, height);
+        const newWidth = Math.round(width * scale);
+        const newHeight = Math.round(height * scale);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            img.close();
+            return file;
+        }
+        ctx.drawImage(img, 0, 0, newWidth, newHeight);
+        img.close();
+
+        return new Promise((resolve) => {
+            canvas.toBlob((blob) => resolve(blob || file), 'image/jpeg', 0.95);
         });
     }
 
@@ -95,6 +147,17 @@ export class UI {
         const textEl = document.getElementById('progress-text');
         container.style.display = 'block';
         textEl.textContent = text;
+    }
+
+    showLoadingOverlay(text) {
+        const overlay = document.getElementById('loading-overlay');
+        const textEl = document.getElementById('loading-text');
+        overlay.style.display = 'flex';
+        textEl.textContent = text;
+    }
+
+    hideLoadingOverlay() {
+        document.getElementById('loading-overlay').style.display = 'none';
     }
 
     hideProgress() {
@@ -229,6 +292,7 @@ export class UI {
         }
 
         document.getElementById('mirror-checkbox').checked = this.state.mirror;
+        document.getElementById('max-resolution').value = String(this.state.maxResolution);
     }
 
     // Sync zoom slider with state (called from render loop for mouse wheel sync)

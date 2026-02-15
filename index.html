@@ -9,6 +9,10 @@
 <body>
     <div class="container">
         <canvas id="canvas"></canvas>
+        <div id="loading-overlay" class="loading-overlay" style="display: none;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text" id="loading-text">Generating depth map...</div>
+        </div>
 
         <div class="controls" id="controls">
             <h2>DepthFlow WebGL</h2>
@@ -84,6 +88,16 @@
 
             <div class="section">
                 <h3>Quality & Behavior</h3>
+                <div class="select-group">
+                    <label for="max-resolution">Max Resolution</label>
+                    <select id="max-resolution">
+                        <option value="1024">1024px</option>
+                        <option value="1920" selected>1920px (default)</option>
+                        <option value="2560">2560px</option>
+                        <option value="3840">4K</option>
+                        <option value="0">Full (no limit)</option>
+                    </select>
+                </div>
                 <div class="slider-group">
                     <label>Quality <span id="quality-value">0.50</span></label>
                     <input type="range" id="quality-slider">
