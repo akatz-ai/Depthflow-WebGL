@@ -7,7 +7,6 @@ export class InputHandler {
         this.lastX = 0;
         this.lastY = 0;
         this.sensitivity = 0.003;
-        this.zoomSensitivity = 5;  // Zoom change per wheel tick
     }
 
     init() {
@@ -46,22 +45,23 @@ export class InputHandler {
         this.lastY = e.clientY;
 
         if (this.isDragging) {
-            // Left drag: parallax offset
+            // Left drag: pan the scene
+            this.state.centerX -= dx;
+            this.state.centerY += dy;
+        } else if (this.isRightDragging) {
+            // Right drag: orbit/tilt camera angle (parallax offset)
             this.state.setTargetOffset(
                 this.state._targetOffsetX - dx,
                 this.state._targetOffsetY + dy
             );
-        } else if (this.isRightDragging) {
-            // Right drag: camera center position
-            this.state.centerX -= dx;
-            this.state.centerY += dy;
         }
     }
 
     onWheel(e) {
         e.preventDefault();
-        const delta = -Math.sign(e.deltaY) * this.zoomSensitivity;
-        this.state.zoom = Math.max(-100, Math.min(200, this.state.zoom + delta));
+        const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05;
+        const newZoom = this.state._targetZoom * zoomFactor;
+        this.state._targetZoom = Math.max(0.1, Math.min(3.0, newZoom));
     }
 
     onMouseUp(e) {
@@ -95,10 +95,9 @@ export class InputHandler {
         this.lastX = touch.clientX;
         this.lastY = touch.clientY;
 
-        this.state.setTargetOffset(
-            this.state._targetOffsetX - dx,
-            this.state._targetOffsetY + dy
-        );
+        // Touch drag: pan the scene
+        this.state.centerX -= dx;
+        this.state.centerY += dy;
     }
 
     onTouchEnd() {
