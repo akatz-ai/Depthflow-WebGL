@@ -149,47 +149,64 @@ export class Renderer {
         if (!this.originalDepth) return;
 
         const edgeFix = this.state.edgeFix;
-
-        // Skip if edgeFix hasn't changed
         if (edgeFix === this.lastEdgeFix) return;
         this.lastEdgeFix = edgeFix;
 
         const { width, height, data } = this.originalDepth;
 
         if (edgeFix <= 0) {
-            // No dilation, use original
             this.uploadDepthTexture(this.originalDepth);
             return;
         }
 
-        // Create output buffer
-        const output = new ImageData(width, height);
-        const radius = Math.ceil(edgeFix * 10);  // Scale 0-1 to 0-10 pixel radius
+        const radius = Math.ceil(edgeFix * 10);
 
-        // Morphological dilation: take max depth in circular kernel
+        // Extract single-channel depth values
+        const src = new Uint8Array(width * height);
+        for (let i = 0; i < width * height; i++) {
+            src[i] = data[i * 4];
+        }
+
+        // Pass 1: Horizontal max
+        const temp = new Uint8Array(width * height);
         for (let y = 0; y < height; y++) {
+            const row = y * width;
             for (let x = 0; x < width; x++) {
                 let maxVal = 0;
-
-                // Sample circular kernel
-                for (let ky = -radius; ky <= radius; ky++) {
-                    for (let kx = -radius; kx <= radius; kx++) {
-                        // Check if within circular kernel
-                        if (kx * kx + ky * ky <= radius * radius) {
-                            const sx = Math.min(Math.max(x + kx, 0), width - 1);
-                            const sy = Math.min(Math.max(y + ky, 0), height - 1);
-                            const idx = (sy * width + sx) * 4;
-                            maxVal = Math.max(maxVal, data[idx]);
-                        }
-                    }
+                const x0 = Math.max(0, x - radius);
+                const x1 = Math.min(width - 1, x + radius);
+                for (let kx = x0; kx <= x1; kx++) {
+                    const v = src[row + kx];
+                    if (v > maxVal) maxVal = v;
                 }
-
-                const outIdx = (y * width + x) * 4;
-                output.data[outIdx] = maxVal;
-                output.data[outIdx + 1] = maxVal;
-                output.data[outIdx + 2] = maxVal;
-                output.data[outIdx + 3] = 255;
+                temp[row + x] = maxVal;
             }
+        }
+
+        // Pass 2: Vertical max
+        const dst = new Uint8Array(width * height);
+        for (let x = 0; x < width; x++) {
+            for (let y = 0; y < height; y++) {
+                let maxVal = 0;
+                const y0 = Math.max(0, y - radius);
+                const y1 = Math.min(height - 1, y + radius);
+                for (let ky = y0; ky <= y1; ky++) {
+                    const v = temp[ky * width + x];
+                    if (v > maxVal) maxVal = v;
+                }
+                dst[y * width + x] = maxVal;
+            }
+        }
+
+        // Write back to RGBA ImageData
+        const output = new ImageData(width, height);
+        for (let i = 0; i < width * height; i++) {
+            const v = dst[i];
+            const idx = i * 4;
+            output.data[idx] = v;
+            output.data[idx + 1] = v;
+            output.data[idx + 2] = v;
+            output.data[idx + 3] = 255;
         }
 
         this.uploadDepthTexture(output);

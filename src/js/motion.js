@@ -112,8 +112,9 @@ export class MotionController {
     }
 
     animateZoom(t, intensity) {
-        // Upstream zoom preset modulates height with isometric=0.8
-        this.state.height = Math.max(0, Math.sin(t) * intensity * 0.5);
+        // Upstream: biased sine so height stays in [0, intensity]
+        // amplitude = intensity/2, bias = intensity/2
+        this.state.height = (intensity / 2) * Math.sin(t) + (intensity / 2);
     }
 
     animateDolly(t, intensity) {
