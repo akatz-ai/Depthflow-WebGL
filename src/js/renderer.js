@@ -266,8 +266,7 @@ export class Renderer {
         gl.uniform1f(this.uniforms.uHeight, s.height);
         gl.uniform1f(this.uniforms.uSteady, s.steady);
         gl.uniform1f(this.uniforms.uFocus, s.focus);
-        // Exponential zoom: 0 = 1x, 100 = 2x, -100 = 0.5x
-        gl.uniform1f(this.uniforms.uZoom, Math.pow(2, s.zoom / 100));
+        gl.uniform1f(this.uniforms.uZoom, s.zoom);
         gl.uniform1f(this.uniforms.uIsometric, s.isometric);
         gl.uniform1f(this.uniforms.uDolly, s.dolly);
         gl.uniform1f(this.uniforms.uInvert, s.invert);

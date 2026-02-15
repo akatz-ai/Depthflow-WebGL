@@ -23,12 +23,12 @@ uniform vec2 uResolution;
 uniform float uImageAspect;  // Source image width/height
 
 // Parallax parameters
-uniform float uHeight;      // 0.0 - 0.5, default 0.2 - parallax intensity
-uniform float uSteady;      // 0.0 - 1.0, default 0.3 - focal depth for offsets
+uniform float uHeight;      // 0.0 - 2.0, default 0.2 - parallax intensity
+uniform float uSteady;      // 0.0 - 1.0, default 0.0 - focal depth for offsets
 uniform float uFocus;       // 0.0 - 1.0, default 0.0 - focal depth for perspective
-uniform float uZoom;        // 0.5 - 2.0, default 1.0 - camera zoom
-uniform float uIsometric;   // 0.0 - 1.0, default 0.5 - perspective vs orthographic
-uniform float uDolly;       // 0.0 - 5.0, default 0.0 - ray origin push back
+uniform float uZoom;        // 0.1 - 3.0, default 1.0 - camera zoom
+uniform float uIsometric;   // 0.0 - 1.0, default 0.0 - perspective vs orthographic
+uniform float uDolly;       // 0.0 - 20.0, default 0.0 - ray origin push back
 uniform float uInvert;      // 0.0 - 1.0, default 0.0 - depth map inversion blend
 uniform bool uMirror;       // default true - mirror edges
 uniform float uQuality;     // 0.0 - 1.0, default 0.5 - ray march quality
@@ -95,8 +95,6 @@ DepthResult computeParallax(vec2 screenGluv) {
     DepthResult result;
     result.outOfBounds = false;
 
-    float screenAspect = uResolution.x / uResolution.y;
-
     // Convert absolute to relative values
     float relFocus = uFocus * uHeight;
     float relSteady = uSteady * uHeight;
@@ -126,9 +124,14 @@ DepthResult computeParallax(vec2 screenGluv) {
         + vec3(screenOffset * uZoom, 0.0)
         + vec3(0.0, 0.0, focalLength);
 
+    // Match upstream camera.gluv behavior: intersect camera ray with z=1 plane
+    vec3 ray = rayTarget - rayOrigin;
+    float t = (1.0 - rayOrigin.z) / ray.z;
+    vec2 cameraGluv = rayOrigin.xy + t * ray.xy;
+
     // Intersection point calculation for "glued" focal plane
     // This makes depth=steady appear stationary during camera movement
-    vec3 intersect = vec3(uCenter + screenGluv, 1.0);
+    vec3 intersect = vec3(uCenter + cameraGluv, 1.0);
     if (abs(1.0 - relSteady) > 0.001) {
         intersect -= vec3(cameraXY, 0.0) * (1.0 / (1.0 - relSteady));
     }

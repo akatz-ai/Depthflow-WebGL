@@ -2,10 +2,10 @@ export class State {
     constructor() {
         // Parallax parameters
         this.height = 0.2;
-        this.steady = 0.3;
+        this.steady = 0.0;
         this.focus = 0.0;
-        this.zoom = 0;          // UI value: -100 to 200 (0 = 1.0x zoom)
-        this.isometric = 0.5;
+        this.zoom = 1.0;
+        this.isometric = 0.0;
         this.dolly = 0.0;
         this.invert = 0.0;
         this.mirror = true;
@@ -24,6 +24,7 @@ export class State {
         // Target values for smoothing
         this._targetOffsetX = 0.0;
         this._targetOffsetY = 0.0;
+        this._targetZoom = 1.0;
 
         // Smoothing factor (0 = instant, 1 = never)
         this.smoothing = 0.85;
@@ -44,14 +45,15 @@ export class State {
         const t = 1 - Math.pow(this.smoothing, dt * 60);
         this.offsetX += (this._targetOffsetX - this.offsetX) * t;
         this.offsetY += (this._targetOffsetY - this.offsetY) * t;
+        this.zoom += (this._targetZoom - this.zoom) * t;
     }
 
     reset() {
         this.height = 0.2;
-        this.steady = 0.3;
+        this.steady = 0.0;
         this.focus = 0.0;
-        this.zoom = 0;          // UI value: -100 to 200 (0 = 1.0x zoom)
-        this.isometric = 0.5;
+        this.zoom = 1.0;
+        this.isometric = 0.0;
         this.dolly = 0.0;
         this.invert = 0.0;
         this.mirror = true;
@@ -63,6 +65,7 @@ export class State {
         this.offsetY = 0.0;
         this._targetOffsetX = 0.0;
         this._targetOffsetY = 0.0;
+        this._targetZoom = 1.0;
         this.centerX = 0.0;
         this.centerY = 0.0;
     }

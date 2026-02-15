@@ -26,13 +26,13 @@ export class UI {
         });
         depthUploadGroup.classList.toggle('disabled', this.autoDepthEnabled);
 
-        // Sliders - ranges matching ComfyUI DepthFlow implementation
-        this.bindSlider('height', 0, 1.0, 0.01);      // Was 0.5, now allows stronger parallax
+        // Sliders - ranges aligned with upstream DepthFlow defaults
+        this.bindSlider('height', 0, 2.0, 0.01);
         this.bindSlider('steady', 0, 1, 0.01);
         this.bindSlider('focus', 0, 1, 0.01);
-        this.bindSlider('zoom', -100, 200, 1, true);    // 0 = 1.0x, synced with mouse wheel
+        this.bindZoomSlider();
         this.bindSlider('isometric', 0, 1, 0.01);
-        this.bindSlider('dolly', 0, 10, 0.1);         // Was 5, now matches intensity range
+        this.bindSlider('dolly', 0, 20, 0.1);
         this.bindSlider('invert', 0, 1, 0.01);
         this.bindSlider('quality', 0.1, 1, 0.01);
         this.bindSlider('smoothing', 0, 0.99, 0.01);
@@ -127,6 +127,23 @@ export class UI {
         });
     }
 
+    bindZoomSlider() {
+        const slider = document.getElementById('zoom-slider');
+        const value = document.getElementById('zoom-value');
+
+        slider.min = 0.1;
+        slider.max = 3.0;
+        slider.step = 0.01;
+        slider.value = this.state._targetZoom;
+        value.textContent = this.state._targetZoom.toFixed(2);
+
+        slider.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            this.state._targetZoom = v;
+            value.textContent = v.toFixed(2);
+        });
+    }
+
     bindSliderDebounced(name, min, max, step, delay) {
         const slider = document.getElementById(`${name}-slider`);
         const value = document.getElementById(`${name}-value`);
@@ -202,8 +219,13 @@ export class UI {
         for (const name of names) {
             const slider = document.getElementById(`${name}-slider`);
             const value = document.getElementById(`${name}-value`);
-            slider.value = this.state[name];
-            value.textContent = name === 'zoom' ? this.state[name] : this.state[name].toFixed(2);
+            if (name === 'zoom') {
+                slider.value = this.state._targetZoom;
+                value.textContent = this.state._targetZoom.toFixed(2);
+            } else {
+                slider.value = this.state[name];
+                value.textContent = this.state[name].toFixed(2);
+            }
         }
 
         document.getElementById('mirror-checkbox').checked = this.state.mirror;
@@ -213,9 +235,10 @@ export class UI {
     syncZoomSlider() {
         const slider = document.getElementById('zoom-slider');
         const value = document.getElementById('zoom-value');
-        if (parseFloat(slider.value) !== this.state.zoom) {
-            slider.value = this.state.zoom;
-            value.textContent = this.state.zoom;
+        const target = this.state._targetZoom;
+        if (Math.abs(parseFloat(slider.value) - target) > 0.005) {
+            slider.value = target;
+            value.textContent = target.toFixed(2);
         }
     }
 }
