@@ -26,6 +26,7 @@ export class Recorder {
         this.loops = 1;
         this.format = 'webm';
         this.fps = 30;
+        this.videoCaptureFps = 60;
 
         // Crop guide state
         this.showGuides = false;
@@ -68,11 +69,52 @@ export class Recorder {
         this.state._lastTime = performance.now();
     }
 
+    getCycleDuration() {
+        const speed = Number(this.motion.speed) || 0;
+        if (speed <= 0) {
+            return this.duration;
+        }
+        return (2 * Math.PI) / speed;
+    }
+
+    getBoundaryAlignedFrameCount(durationSec, fps) {
+        return Math.max(1, Math.round(durationSec * fps) + 1);
+    }
+
+    warmupSmoothingForCycle(cycleDurationSec) {
+        if (cycleDurationSec <= 0 || !Number.isFinite(cycleDurationSec) || this.state.smoothing <= 0) {
+            return;
+        }
+
+        // Advance one hidden cycle so smoothing reaches a periodic state before capture starts.
+        const steps = Math.max(1, Math.min(2400, Math.round(cycleDurationSec * 120)));
+        const stepSec = cycleDurationSec / steps;
+
+        for (let i = 0; i < steps; i++) {
+            this.motion.update(stepSec);
+            const t = 1 - Math.pow(this.state.smoothing, stepSec * 60);
+            this.state.offsetX += (this.state._targetOffsetX - this.state.offsetX) * t;
+            this.state.offsetY += (this.state._targetOffsetY - this.state.offsetY) * t;
+            this.state.zoom += (this.state._targetZoom - this.state.zoom) * t;
+        }
+    }
+
     resetLoopToStartPose() {
         // Evaluate motion at t=0 so preset-dependent targets/params are applied immediately.
         this.motion.time = 0;
         this.motion.running = true;
         this.motion.update(0);
+
+        const cycleDuration = this.getCycleDuration();
+        if (this.motion.preset !== 'none' && this.state.smoothing > 0) {
+            this.warmupSmoothingForCycle(cycleDuration);
+            // Re-anchor phase to exact loop start while preserving warmed smoothed state.
+            this.motion.time = 0;
+            this.motion.update(0);
+            this.state._lastTime = performance.now();
+            return;
+        }
+
         this.snapCameraToTargets();
     }
 
@@ -310,14 +352,7 @@ export class Recorder {
 
     getRecordingDuration() {
         const loops = Math.max(1, Number(this.loops) || 1);
-        const speed = Number(this.motion.speed) || 0;
-
-        if (speed <= 0) {
-            return this.duration * loops;
-        }
-
-        const cycleTime = (2 * Math.PI) / speed;
-        return cycleTime * loops;
+        return this.getCycleDuration() * loops;
     }
 
     async startRecording(onProgress) {
@@ -361,17 +396,21 @@ export class Recorder {
 
         this.recordingStartTime = 0;
         this.recordingDuration = duration * 1000;
+        if (this.format !== 'gif' || typeof window.GIF === 'undefined') {
+            const videoFrames = this.getBoundaryAlignedFrameCount(duration, this.videoCaptureFps);
+            this.recordingDuration = (videoFrames * 1000) / this.videoCaptureFps;
+        }
 
         try {
             if (this.format === 'gif') {
                 if (typeof window.GIF === 'undefined') {
                     this.recordedMimeType = 'video/webm';
-                    await this.recordVideo(offscreen, duration, true);
+                    await this.recordVideo(offscreen, true);
                 } else {
                     await this.recordGif(offscreen, offCtx, duration);
                 }
             } else {
-                await this.recordVideo(offscreen, duration, false);
+                await this.recordVideo(offscreen, false);
             }
         } finally {
             this.isRecording = false;
@@ -396,8 +435,8 @@ export class Recorder {
         }
     }
 
-    async recordVideo(offscreen, duration, forceWebm) {
-        const stream = offscreen.captureStream(60);
+    async recordVideo(offscreen, forceWebm) {
+        const stream = offscreen.captureStream(this.videoCaptureFps);
 
         const mimeCandidates = forceWebm
             ? ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
@@ -453,7 +492,7 @@ export class Recorder {
             this.recordingProgress({
                 phase: 'recording',
                 elapsedSec: 0,
-                totalSec: duration
+                totalSec: this.recordingDuration / 1000
             });
         }
 
@@ -467,8 +506,9 @@ export class Recorder {
         this.gifOffscreen = offscreen;
         this.gifOffCtx = offCtx;
         this.gifFrameDelay = 1000 / this.fps;
-        this.gifTotalFrames = Math.max(1, Math.ceil(duration * this.fps));
+        this.gifTotalFrames = this.getBoundaryAlignedFrameCount(duration, this.fps);
         this.gifCapturedCount = 0;
+        this.recordingDuration = this.gifTotalFrames * this.gifFrameDelay;
         this.gifRecording = true;
 
         // Wait for the main render loop to capture all frames
@@ -479,7 +519,8 @@ export class Recorder {
         this.gifDoneResolve = null;
 
         if (this.recordingProgress) {
-            this.recordingProgress({ phase: 'encoding', elapsedSec: duration, totalSec: duration });
+            const totalSec = this.recordingDuration / 1000;
+            this.recordingProgress({ phase: 'encoding', elapsedSec: totalSec, totalSec });
         }
 
         // Encode all captured frames
@@ -536,7 +577,7 @@ export class Recorder {
         // GIF frame capture: sample at this.fps rate from the render loop
         if (this.gifRecording) {
             const framePeriod = 1000 / this.fps;
-            const totalFrames = this.gifTotalFrames || Math.max(1, Math.ceil((this.recordingDuration / 1000) * this.fps));
+            const totalFrames = this.gifTotalFrames || this.getBoundaryAlignedFrameCount(this.recordingDuration / 1000, this.fps);
 
             while (this.gifCapturedCount < totalFrames && elapsed >= this.gifCapturedCount * framePeriod) {
                 const { sx, sy, sw, sh } = this.getRecordingRegionPixels();
