@@ -12,6 +12,7 @@ export class Renderer {
         this.originalDepth = null;
         this.lastEdgeFix = -1;
         this.dpr = 1;
+        this.resizeObserver = null;
     }
 
     async init() {
@@ -39,6 +40,10 @@ export class Renderer {
         this.createPlaceholderTextures();
 
         this.resize();
+        if (typeof ResizeObserver !== 'undefined') {
+            this.resizeObserver = new ResizeObserver(() => this.resize());
+            this.resizeObserver.observe(this.canvas);
+        }
         window.addEventListener('resize', () => this.resize());
     }
 
@@ -252,9 +257,14 @@ export class Renderer {
 
     resize() {
         const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        const width = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
+        const height = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
+
+        if (this.canvas.width === width && this.canvas.height === height && this.dpr === dpr) {
+            return;
+        }
+
         this.dpr = dpr;
-        const width = this.canvas.clientWidth * dpr;
-        const height = this.canvas.clientHeight * dpr;
 
         this.canvas.width = width;
         this.canvas.height = height;

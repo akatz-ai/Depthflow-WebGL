@@ -4,6 +4,11 @@
     box-sizing: border-box;
 }
 
+:root {
+    --controls-width: 280px;
+    --mobile-drawer-peek: 88px;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: #1a1a2e;
@@ -16,6 +21,12 @@ body {
     position: relative;
     width: 100vw;
     height: 100vh;
+    padding-right: var(--controls-width);
+    transition: padding-right 0.3s ease;
+}
+
+body.controls-collapsed .container {
+    padding-right: 0;
 }
 
 #canvas {
@@ -39,7 +50,7 @@ body {
     position: fixed;
     right: 0;
     top: 0;
-    width: 280px;
+    width: var(--controls-width);
     height: 100vh;
     background: rgba(26, 26, 46, 0.98);
     border-left: 1px solid #333;
@@ -49,8 +60,13 @@ body {
     transition: transform 0.3s ease;
 }
 
+body.controls-collapsed .controls,
 .controls.hidden {
     transform: translateX(100%);
+}
+
+.drawer-handle {
+    display: none;
 }
 
 .controls h2 {
@@ -248,7 +264,7 @@ button:hover {
 .toggle-controls {
     position: fixed;
     top: 10px;
-    right: 290px;
+    right: calc(var(--controls-width) + 10px);
     width: 40px;
     height: 40px;
     padding: 0;
@@ -258,7 +274,8 @@ button:hover {
     transition: right 0.3s ease;
 }
 
-.toggle-controls.shifted {
+.toggle-controls.shifted,
+body.controls-collapsed .toggle-controls {
     right: 10px;
 }
 
@@ -329,7 +346,63 @@ button:hover {
 }
 
 @media (max-width: 768px) {
-    .controls {
+    body.mobile-layout .container {
+        padding-right: 0;
+    }
+
+    body.mobile-layout .controls {
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: 0;
         width: 100%;
+        height: 100dvh;
+        max-height: none;
+        border-left: none;
+        border-top: 1px solid #333;
+        border-radius: 16px 16px 0 0;
+        padding: 12px 16px calc(24px + env(safe-area-inset-bottom));
+        transform: translateY(var(--drawer-offset, calc(100dvh - var(--mobile-drawer-peek))));
+        transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+        will-change: transform;
+        z-index: 120;
+    }
+
+    body.mobile-layout .controls.dragging {
+        transition: none;
+    }
+
+    body.mobile-layout .drawer-handle {
+        display: flex;
+        width: 100%;
+        height: 26px;
+        margin: -4px 0 8px;
+        align-items: center;
+        justify-content: center;
+        touch-action: none;
+        cursor: grab;
+    }
+
+    body.mobile-layout .drawer-handle::before {
+        content: '';
+        width: 44px;
+        height: 5px;
+        border-radius: 999px;
+        background: rgba(127, 143, 255, 0.9);
+    }
+
+    body.mobile-layout .toggle-controls {
+        top: auto;
+        bottom: calc(12px + env(safe-area-inset-bottom));
+        right: 12px;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        z-index: 140;
+    }
+
+    body.mobile-layout .toggle-controls.shifted,
+    body.mobile-layout.controls-collapsed .toggle-controls {
+        right: 12px;
     }
 }

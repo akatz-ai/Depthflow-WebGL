@@ -18,6 +18,35 @@ export class UI {
         this.mediaStoreName = 'files';
         this.mediaDbPromise = null;
         this.settingsSaveTimer = null;
+        this.layoutSyncTimer = null;
+        this.mobileMediaQuery = window.matchMedia('(max-width: 768px)');
+        this.isMobileLayout = this.mobileMediaQuery.matches;
+        this.desktopControlsOpen = true;
+        this.mobileDrawerDetent = 'collapsed';
+        this.drawerPeekHeight = 88;
+        this.drawerMidVisibleRatio = 0.48;
+        this.drawerDragging = false;
+        this.drawerPointerId = null;
+        this.drawerStartY = 0;
+        this.drawerStartOffset = 0;
+        this.drawerCurrentOffset = 0;
+        this.controlsEl = null;
+        this.toggleControlsBtn = null;
+        this.drawerHandleEl = null;
+        this.drawerSuppressTap = false;
+        this.boundDrawerPointerMove = (event) => this.onDrawerPointerMove(event);
+        this.boundDrawerPointerUp = (event) => this.onDrawerPointerUp(event);
+        this.boundControlsTransitionEnd = (event) => this.onControlsTransitionEnd(event);
+        this.boundViewportModeChange = () => this.applyResponsiveLayoutMode({ persist: false });
+        this.boundViewportResize = () => {
+            if (this.isMobileLayout) {
+                this.setMobileDrawerDetent(this.mobileDrawerDetent, {
+                    persist: false,
+                    sync: false,
+                    animate: false
+                });
+            }
+        };
         this.persistedSettings = this.loadPersistedSettings();
     }
 
@@ -76,13 +105,7 @@ export class UI {
             this.scheduleSettingsSave(0);
         });
 
-        // Toggle controls panel
-        const toggleBtn = document.getElementById('toggle-controls');
-        const controls = document.getElementById('controls');
-        toggleBtn.addEventListener('click', () => {
-            controls.classList.toggle('hidden');
-            toggleBtn.classList.toggle('shifted');
-        });
+        this.initResponsiveLayout();
 
         this.bindPersistenceTriggers();
         window.addEventListener('beforeunload', () => this.saveSettings());
@@ -98,7 +121,276 @@ export class UI {
         this.recorder = recorder;
         if (this.initialized) {
             this.bindExportControls();
+            this.triggerLayoutSync();
         }
+    }
+
+    initResponsiveLayout() {
+        this.controlsEl = document.getElementById('controls');
+        this.toggleControlsBtn = document.getElementById('toggle-controls');
+        this.drawerHandleEl = document.getElementById('drawer-handle');
+        if (!this.controlsEl || !this.toggleControlsBtn) return;
+
+        this.toggleControlsBtn.addEventListener('click', () => {
+            if (this.isMobileLayout) {
+                const nextDetent = this.mobileDrawerDetent === 'collapsed' ? 'mid' : 'collapsed';
+                this.setMobileDrawerDetent(nextDetent);
+            } else {
+                this.setDesktopControlsOpen(!this.desktopControlsOpen);
+            }
+        });
+
+        if (this.drawerHandleEl) {
+            this.drawerHandleEl.addEventListener('pointerdown', (event) => this.onDrawerPointerDown(event));
+            this.drawerHandleEl.addEventListener('click', () => {
+                if (!this.isMobileLayout || this.drawerSuppressTap) return;
+
+                const order = ['collapsed', 'mid', 'full'];
+                const index = order.indexOf(this.mobileDrawerDetent);
+                const nextDetent = order[(index + 1) % order.length];
+                this.setMobileDrawerDetent(nextDetent);
+            });
+        }
+
+        if (this.mobileMediaQuery.addEventListener) {
+            this.mobileMediaQuery.addEventListener('change', this.boundViewportModeChange);
+        } else {
+            this.mobileMediaQuery.addListener(this.boundViewportModeChange);
+        }
+        window.addEventListener('orientationchange', this.boundViewportModeChange);
+        window.addEventListener('resize', this.boundViewportResize);
+        this.controlsEl.addEventListener('transitionend', this.boundControlsTransitionEnd);
+
+        this.applyResponsiveLayoutMode({ persist: false });
+    }
+
+    onControlsTransitionEnd(event) {
+        if (!event || event.target !== this.controlsEl) return;
+        if (event.propertyName !== 'transform') return;
+        this.triggerLayoutSync();
+    }
+
+    applyResponsiveLayoutMode({ persist = true } = {}) {
+        this.isMobileLayout = this.mobileMediaQuery.matches;
+        document.body.classList.toggle('mobile-layout', this.isMobileLayout);
+
+        if (this.isMobileLayout) {
+            document.body.classList.remove('controls-collapsed');
+            if (this.controlsEl) {
+                this.controlsEl.classList.remove('hidden');
+            }
+            if (this.toggleControlsBtn) {
+                this.toggleControlsBtn.classList.remove('shifted');
+            }
+            this.setMobileDrawerDetent(this.mobileDrawerDetent, {
+                persist: false,
+                sync: false,
+                animate: false
+            });
+        } else {
+            document.body.classList.remove('drawer-collapsed', 'drawer-mid', 'drawer-full');
+            if (this.controlsEl) {
+                this.controlsEl.classList.remove('dragging');
+                this.controlsEl.style.removeProperty('--drawer-offset');
+            }
+            this.setDesktopControlsOpen(this.desktopControlsOpen, {
+                persist: false,
+                sync: false
+            });
+        }
+
+        if (persist) {
+            this.scheduleSettingsSave();
+        }
+        this.triggerLayoutSync();
+    }
+
+    setDesktopControlsOpen(open, { persist = true, sync = true } = {}) {
+        this.desktopControlsOpen = !!open;
+
+        if (!this.isMobileLayout) {
+            const collapsed = !this.desktopControlsOpen;
+            document.body.classList.toggle('controls-collapsed', collapsed);
+
+            if (this.controlsEl) {
+                this.controlsEl.classList.toggle('hidden', collapsed);
+            }
+            if (this.toggleControlsBtn) {
+                this.toggleControlsBtn.classList.toggle('shifted', collapsed);
+            }
+        }
+
+        if (persist) {
+            this.scheduleSettingsSave();
+        }
+        if (sync) {
+            this.triggerLayoutSync();
+        }
+    }
+
+    getMobileDrawerOffsets() {
+        const viewportHeight = Math.max(
+            320,
+            Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight || 0)
+        );
+        const collapsed = Math.max(0, viewportHeight - this.drawerPeekHeight);
+        const midVisible = Math.round(viewportHeight * this.drawerMidVisibleRatio);
+        const rawMid = Math.max(0, viewportHeight - midVisible);
+        const maxMid = Math.max(0, collapsed - 48);
+        const mid = Math.min(maxMid, Math.max(64, rawMid));
+
+        return {
+            full: 0,
+            mid,
+            collapsed
+        };
+    }
+
+    applyMobileDrawerOffset(offset, animate = true) {
+        if (!this.controlsEl) return;
+
+        if (!animate) {
+            this.controlsEl.classList.add('dragging');
+            this.controlsEl.style.setProperty('--drawer-offset', `${Math.round(offset)}px`);
+            requestAnimationFrame(() => {
+                if (!this.drawerDragging && this.controlsEl) {
+                    this.controlsEl.classList.remove('dragging');
+                }
+            });
+            return;
+        }
+
+        this.controlsEl.classList.remove('dragging');
+        this.controlsEl.style.setProperty('--drawer-offset', `${Math.round(offset)}px`);
+    }
+
+    setMobileDrawerDetent(detent, { persist = true, sync = false, animate = true } = {}) {
+        const valid = ['collapsed', 'mid', 'full'];
+        this.mobileDrawerDetent = valid.includes(detent) ? detent : 'collapsed';
+
+        if (this.isMobileLayout) {
+            const offsets = this.getMobileDrawerOffsets();
+            const offset = offsets[this.mobileDrawerDetent];
+            this.drawerCurrentOffset = offset;
+
+            document.body.classList.remove('drawer-collapsed', 'drawer-mid', 'drawer-full');
+            document.body.classList.add(`drawer-${this.mobileDrawerDetent}`);
+            this.applyMobileDrawerOffset(offset, animate);
+
+            if (this.mobileDrawerDetent === 'collapsed' && this.controlsEl) {
+                this.controlsEl.scrollTop = 0;
+            }
+        }
+
+        if (persist) {
+            this.scheduleSettingsSave();
+        }
+        if (sync) {
+            this.triggerLayoutSync();
+        }
+    }
+
+    onDrawerPointerDown(event) {
+        if (!this.isMobileLayout || !this.controlsEl || !this.drawerHandleEl) return;
+
+        event.preventDefault();
+        this.drawerDragging = true;
+        this.drawerSuppressTap = false;
+        this.drawerPointerId = event.pointerId;
+        this.drawerStartY = event.clientY;
+
+        const offsets = this.getMobileDrawerOffsets();
+        this.drawerStartOffset = offsets[this.mobileDrawerDetent] ?? offsets.collapsed;
+        this.drawerCurrentOffset = this.drawerStartOffset;
+
+        this.controlsEl.classList.add('dragging');
+        this.controlsEl.style.setProperty('--drawer-offset', `${Math.round(this.drawerStartOffset)}px`);
+
+        if (this.drawerHandleEl.setPointerCapture) {
+            this.drawerHandleEl.setPointerCapture(event.pointerId);
+        }
+
+        window.addEventListener('pointermove', this.boundDrawerPointerMove);
+        window.addEventListener('pointerup', this.boundDrawerPointerUp);
+        window.addEventListener('pointercancel', this.boundDrawerPointerUp);
+    }
+
+    onDrawerPointerMove(event) {
+        if (!this.drawerDragging || event.pointerId !== this.drawerPointerId || !this.controlsEl) return;
+
+        const offsets = this.getMobileDrawerOffsets();
+        const delta = event.clientY - this.drawerStartY;
+        const unclamped = this.drawerStartOffset + delta;
+        const nextOffset = Math.min(offsets.collapsed, Math.max(offsets.full, unclamped));
+
+        if (Math.abs(delta) > 4) {
+            this.drawerSuppressTap = true;
+        }
+
+        this.drawerCurrentOffset = nextOffset;
+        this.controlsEl.style.setProperty('--drawer-offset', `${Math.round(nextOffset)}px`);
+    }
+
+    onDrawerPointerUp(event) {
+        if (!this.drawerDragging || event.pointerId !== this.drawerPointerId) return;
+
+        this.drawerDragging = false;
+        this.drawerPointerId = null;
+
+        if (this.drawerHandleEl && this.drawerHandleEl.releasePointerCapture) {
+            this.drawerHandleEl.releasePointerCapture(event.pointerId);
+        }
+
+        window.removeEventListener('pointermove', this.boundDrawerPointerMove);
+        window.removeEventListener('pointerup', this.boundDrawerPointerUp);
+        window.removeEventListener('pointercancel', this.boundDrawerPointerUp);
+
+        if (this.controlsEl) {
+            this.controlsEl.classList.remove('dragging');
+        }
+
+        const offsets = this.getMobileDrawerOffsets();
+        const candidates = ['collapsed', 'mid', 'full'];
+        let nearest = 'collapsed';
+        let bestDistance = Infinity;
+
+        for (const detent of candidates) {
+            const distance = Math.abs(this.drawerCurrentOffset - offsets[detent]);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                nearest = detent;
+            }
+        }
+
+        this.setMobileDrawerDetent(nearest, { persist: true, animate: true });
+
+        if (this.drawerSuppressTap) {
+            setTimeout(() => {
+                this.drawerSuppressTap = false;
+            }, 0);
+        }
+    }
+
+    triggerLayoutSync() {
+        if (this.renderer && typeof this.renderer.resize === 'function') {
+            this.renderer.resize();
+        }
+        if (this.recorder && typeof this.recorder.syncOverlaySize === 'function') {
+            this.recorder.syncOverlaySize();
+        }
+        window.dispatchEvent(new Event('resize'));
+
+        clearTimeout(this.layoutSyncTimer);
+        this.layoutSyncTimer = setTimeout(() => {
+            if (this.renderer && typeof this.renderer.resize === 'function') {
+                this.renderer.resize();
+            }
+            if (this.recorder && typeof this.recorder.syncOverlaySize === 'function') {
+                this.recorder.syncOverlaySize();
+            }
+            window.dispatchEvent(new Event('resize'));
+            this.layoutSyncTimer = null;
+        }, 320);
     }
 
     bindImageUpload() {
@@ -621,6 +913,14 @@ export class UI {
         if (formatSelect && ['webm', 'mp4', 'gif'].includes(exportData.format)) {
             formatSelect.value = exportData.format;
         }
+
+        const layoutData = persisted.layout || {};
+        if (typeof layoutData.desktopControlsOpen === 'boolean') {
+            this.desktopControlsOpen = layoutData.desktopControlsOpen;
+        }
+        if (['collapsed', 'mid', 'full'].includes(layoutData.mobileDrawerDetent)) {
+            this.mobileDrawerDetent = layoutData.mobileDrawerDetent;
+        }
     }
 
     bindPersistenceTriggers() {
@@ -698,6 +998,10 @@ export class UI {
                 aspect: aspectSelect ? aspectSelect.value : '16:9',
                 loops: loopsSlider ? (parseInt(loopsSlider.value, 10) || 1) : 1,
                 format: formatSelect ? formatSelect.value : 'webm'
+            },
+            layout: {
+                desktopControlsOpen: this.desktopControlsOpen,
+                mobileDrawerDetent: this.mobileDrawerDetent
             }
         };
     }

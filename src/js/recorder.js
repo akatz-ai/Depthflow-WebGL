@@ -35,6 +35,7 @@ export class Recorder {
 
         this.overlay = null;
         this.overlayCtx = null;
+        this.overlayResizeObserver = null;
         this.previewStartTime = null;
         this.previewPendingStart = false;
         this.previewOriginalRunning = false;
@@ -124,6 +125,11 @@ export class Recorder {
 
         this.overlayCtx = this.overlay.getContext('2d');
         this.syncOverlaySize();
+
+        if (typeof ResizeObserver !== 'undefined') {
+            this.overlayResizeObserver = new ResizeObserver(() => this.syncOverlaySize());
+            this.overlayResizeObserver.observe(this.canvas);
+        }
 
         window.addEventListener('resize', () => this.syncOverlaySize());
     }
