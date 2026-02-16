@@ -13,6 +13,7 @@ export class Renderer {
         this.lastEdgeFix = -1;
         this.dpr = 1;
         this.resizeObserver = null;
+        this.lastAspect = 0;
     }
 
     async init() {
@@ -259,12 +260,25 @@ export class Renderer {
         const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
         const width = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
         const height = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
+        const nextAspect = width / height;
 
         if (this.canvas.width === width && this.canvas.height === height && this.dpr === dpr) {
             return;
         }
 
+        const prevAspect = this.lastAspect > 0 ? this.lastAspect : nextAspect;
+        if (prevAspect > 0 && Math.abs(nextAspect - prevAspect) > 1e-6) {
+            const ratio = nextAspect / prevAspect;
+
+            // Keep horizontal framing stable across viewport-aspect changes.
+            this.state.centerX *= ratio;
+            this.state.originX *= ratio;
+            this.state.offsetX *= ratio;
+            this.state._targetOffsetX *= ratio;
+        }
+
         this.dpr = dpr;
+        this.lastAspect = nextAspect;
 
         this.canvas.width = width;
         this.canvas.height = height;

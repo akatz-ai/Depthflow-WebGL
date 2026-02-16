@@ -21,6 +21,8 @@ body {
     position: relative;
     width: 100vw;
     height: 100vh;
+    min-width: 0;
+    min-height: 0;
     padding-right: var(--controls-width);
     transition: padding-right 0.3s ease;
 }
@@ -31,6 +33,11 @@ body.controls-collapsed .container {
 
 #canvas {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
     cursor: grab;
 }
 
@@ -83,6 +90,20 @@ body.controls-collapsed .controls,
     text-transform: uppercase;
     letter-spacing: 1px;
     margin: 15px 0 10px;
+}
+
+.controls,
+.controls h2,
+.controls h3,
+.controls label,
+.controls span,
+.controls p,
+.controls button,
+.toggle-controls,
+.toggle-controls span,
+.drawer-handle {
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .section {
