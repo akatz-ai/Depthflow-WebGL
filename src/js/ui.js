@@ -62,6 +62,7 @@ export class UI {
 
     init() {
         this.applyPersistedSettings();
+        this.sanitizeCameraState();
 
         // File uploads
         this.bindImageUpload();
@@ -117,6 +118,7 @@ export class UI {
         // Reset button
         document.getElementById('reset-btn').addEventListener('click', () => {
             this.state.reset();
+            this.recenterView();
             this.updateAllSliders();
             this.scheduleSettingsSave(0);
         });
@@ -131,6 +133,49 @@ export class UI {
             this.bindExportControls();
         }
         this.scheduleSettingsSave(0);
+    }
+
+    sanitizeCameraState() {
+        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+        const cameraLimit = 8;
+        let dirty = false;
+
+        const clampField = (key, min, max, fallback = 0) => {
+            const raw = this.state[key];
+            const numeric = Number(raw);
+            const finite = Number.isFinite(numeric) ? numeric : fallback;
+            const next = clamp(finite, min, max);
+            if (this.state[key] !== next) {
+                this.state[key] = next;
+                dirty = true;
+            }
+        };
+
+        clampField('offsetX', -cameraLimit, cameraLimit, 0);
+        clampField('offsetY', -cameraLimit, cameraLimit, 0);
+        clampField('_targetOffsetX', -cameraLimit, cameraLimit, 0);
+        clampField('_targetOffsetY', -cameraLimit, cameraLimit, 0);
+        clampField('centerX', -cameraLimit, cameraLimit, 0);
+        clampField('centerY', -cameraLimit, cameraLimit, 0);
+        clampField('originX', -cameraLimit, cameraLimit, 0);
+        clampField('originY', -cameraLimit, cameraLimit, 0);
+        clampField('zoom', 0.1, 3, 1);
+        clampField('_targetZoom', 0.1, 3, 1);
+
+        if (dirty) {
+            this.scheduleSettingsSave(0);
+        }
+    }
+
+    recenterView() {
+        this.state.centerX = 0;
+        this.state.centerY = 0;
+        this.state.originX = 0;
+        this.state.originY = 0;
+        this.state.offsetX = 0;
+        this.state.offsetY = 0;
+        this.state._targetOffsetX = 0;
+        this.state._targetOffsetY = 0;
     }
 
     setRecorder(recorder) {
@@ -151,7 +196,7 @@ export class UI {
 
         this.toggleControlsBtn.addEventListener('click', () => {
             if (this.isMobileLayout) {
-                const nextDetent = this.mobileDrawerDetent === 'collapsed' ? 'mid' : 'collapsed';
+                const nextDetent = this.mobileDrawerDetent === 'collapsed' ? 'full' : 'collapsed';
                 this.setMobileDrawerDetent(nextDetent);
             } else {
                 this.setDesktopControlsOpen(!this.desktopControlsOpen);
@@ -432,6 +477,7 @@ export class UI {
                 const resized = await this.resizeImage(this.currentOriginalImageBlob, this.state.maxResolution);
                 this.currentImageBlob = resized;
                 await this.renderer.loadImage(resized);
+                this.recenterView();
                 await this.saveMediaBlob('image', resized);
                 this.scheduleSettingsSave();
 
