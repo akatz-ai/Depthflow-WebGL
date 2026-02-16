@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>DepthFlow WebGL</title>
     <link rel="stylesheet" href="src/css/style.css">
 </head>
@@ -16,152 +16,157 @@
         <canvas id="recording-overlay" class="recording-overlay"></canvas>
 
         <div class="controls" id="controls">
-            <div class="drawer-handle" id="drawer-handle" aria-label="Drag controls drawer"></div>
-            <h2>DepthFlow WebGL</h2>
-
-            <div class="section">
-                <h3>Images</h3>
-                <div class="upload-group">
-                    <label for="image-upload">Color Image</label>
-                    <input type="file" id="image-upload" accept="image/*">
-                </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="auto-depth-checkbox" checked>
-                    <label for="auto-depth-checkbox">Auto-generate depth map</label>
-                </div>
-                <div class="upload-group" id="depth-upload-group">
-                    <label for="depth-upload">Depth Map (optional)</label>
-                    <input type="file" id="depth-upload" accept="image/*">
-                </div>
-                <div id="depth-progress" class="progress-container" style="display: none;">
-                    <div class="progress-bar" id="progress-bar"></div>
-                    <span class="progress-text" id="progress-text">Loading model...</span>
-                </div>
+            <div class="controls-header" id="controls-header">
+                <div class="drawer-handle" id="drawer-handle" aria-label="Drag controls drawer"></div>
+                <h2>DepthFlow WebGL</h2>
             </div>
 
-            <div class="section">
-                <h3>Motion Preset</h3>
-                <div class="select-group">
-                    <select id="motion-preset">
-                        <option value="none">None</option>
-                    </select>
+            <div class="controls-scroll" id="controls-scroll">
+                <div class="section">
+                    <h3>Images</h3>
+                    <div class="upload-group">
+                        <label for="image-upload">Color Image</label>
+                        <input type="file" id="image-upload" accept="image/*">
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="auto-depth-checkbox" checked>
+                        <label for="auto-depth-checkbox">Auto-generate depth map</label>
+                    </div>
+                    <button id="regenerate-depth-btn" class="btn-secondary">Regenerate Depth Map</button>
+                    <div class="upload-group" id="depth-upload-group">
+                        <label for="depth-upload">Depth Map (optional)</label>
+                        <input type="file" id="depth-upload" accept="image/*">
+                    </div>
+                    <div id="depth-progress" class="progress-container" style="display: none;">
+                        <div class="progress-bar" id="progress-bar"></div>
+                        <span class="progress-text" id="progress-text">Loading model...</span>
+                    </div>
                 </div>
-                <div class="slider-group">
-                    <label>Intensity <span id="motion-intensity-value">1.0</span></label>
-                    <input type="range" id="motion-intensity" min="0.1" max="3" step="0.1" value="1">
-                </div>
-                <div class="slider-group">
-                    <label>Speed <span id="motion-speed-value">1.0</span></label>
-                    <input type="range" id="motion-speed" min="0.1" max="3" step="0.1" value="1">
-                </div>
-            </div>
 
-            <div class="section">
-                <h3>Export</h3>
-                <div class="select-group">
-                    <label for="aspect-ratio">Aspect Ratio</label>
-                    <select id="aspect-ratio">
-                        <option value="9:16">9:16 (Reels/TikTok)</option>
-                        <option value="1:1">1:1 (Instagram)</option>
-                        <option value="4:5">4:5 (Instagram Feed)</option>
-                        <option value="16:9" selected>16:9 (YouTube)</option>
-                        <option value="4:3">4:3 (Classic)</option>
-                        <option value="full">Full Canvas</option>
-                    </select>
+                <div class="section">
+                    <h3>Motion Preset</h3>
+                    <div class="select-group">
+                        <select id="motion-preset">
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Intensity <span id="motion-intensity-value">1.0</span></label>
+                        <input type="range" id="motion-intensity" min="0.1" max="3" step="0.1" value="1">
+                    </div>
+                    <div class="slider-group">
+                        <label>Speed <span id="motion-speed-value">1.0</span></label>
+                        <input type="range" id="motion-speed" min="0.1" max="3" step="0.1" value="1">
+                    </div>
                 </div>
-                <div class="slider-group">
-                    <label>Loops <span id="loops-value">1</span></label>
-                    <input type="range" id="loops-slider" min="1" max="5" step="1" value="1">
-                </div>
-                <div class="select-group">
-                    <label for="export-format">Format</label>
-                    <select id="export-format">
-                        <option value="webm" selected>WebM</option>
-                        <option value="mp4">MP4</option>
-                        <option value="gif">GIF</option>
-                    </select>
-                </div>
-                <p id="export-duration" class="export-duration">Duration: ~6.3s (1 loop)</p>
-                <div class="export-buttons">
-                    <button id="preview-btn" class="btn-secondary">Preview</button>
-                    <button id="export-btn" class="btn-primary">Export</button>
-                </div>
-            </div>
 
-            <div class="section">
-                <h3>Parallax</h3>
-                <div class="slider-group">
-                    <label>Height <span id="height-value">0.20</span></label>
-                    <input type="range" id="height-slider">
+                <div class="section">
+                    <h3>Export</h3>
+                    <div class="select-group">
+                        <label for="aspect-ratio">Aspect Ratio</label>
+                        <select id="aspect-ratio">
+                            <option value="9:16">9:16 (Reels/TikTok)</option>
+                            <option value="1:1">1:1 (Instagram)</option>
+                            <option value="4:5">4:5 (Instagram Feed)</option>
+                            <option value="16:9" selected>16:9 (YouTube)</option>
+                            <option value="4:3">4:3 (Classic)</option>
+                            <option value="full">Full Canvas</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Loops <span id="loops-value">1</span></label>
+                        <input type="range" id="loops-slider" min="1" max="5" step="1" value="1">
+                    </div>
+                    <div class="select-group">
+                        <label for="export-format">Format</label>
+                        <select id="export-format">
+                            <option value="webm" selected>WebM</option>
+                            <option value="mp4">MP4</option>
+                            <option value="gif">GIF</option>
+                        </select>
+                    </div>
+                    <p id="export-duration" class="export-duration">Duration: ~6.3s (1 loop)</p>
+                    <div class="export-buttons">
+                        <button id="preview-btn" class="btn-secondary">Preview</button>
+                        <button id="export-btn" class="btn-primary">Export</button>
+                    </div>
                 </div>
-                <div class="slider-group">
-                    <label>Steady <span id="steady-value">0.00</span></label>
-                    <input type="range" id="steady-slider">
-                </div>
-                <div class="slider-group">
-                    <label>Focus <span id="focus-value">0.00</span></label>
-                    <input type="range" id="focus-slider">
-                </div>
-                <div class="slider-group">
-                    <label>Zoom <span id="zoom-value">1.00</span></label>
-                    <input type="range" id="zoom-slider">
-                </div>
-                <div class="slider-group">
-                    <label>Isometric <span id="isometric-value">0.00</span></label>
-                    <input type="range" id="isometric-slider">
-                </div>
-                <div class="slider-group">
-                    <label>Dolly <span id="dolly-value">0.00</span></label>
-                    <input type="range" id="dolly-slider">
-                </div>
-                <div class="slider-group">
-                    <label>Invert <span id="invert-value">0.00</span></label>
-                    <input type="range" id="invert-slider">
-                </div>
-            </div>
 
-            <div class="section">
-                <h3>Quality & Behavior</h3>
-                <div class="select-group">
-                    <label for="max-resolution">Max Resolution</label>
-                    <select id="max-resolution">
-                        <option value="1024">1024px</option>
-                        <option value="1920" selected>1920px (default)</option>
-                        <option value="2560">2560px</option>
-                        <option value="3840">4K</option>
-                        <option value="0">Full (no limit)</option>
-                    </select>
+                <div class="section">
+                    <h3>Parallax</h3>
+                    <div class="slider-group">
+                        <label>Height <span id="height-value">0.20</span></label>
+                        <input type="range" id="height-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>Steady <span id="steady-value">0.00</span></label>
+                        <input type="range" id="steady-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>Focus <span id="focus-value">0.00</span></label>
+                        <input type="range" id="focus-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>Zoom <span id="zoom-value">1.00</span></label>
+                        <input type="range" id="zoom-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>Isometric <span id="isometric-value">0.00</span></label>
+                        <input type="range" id="isometric-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>Dolly <span id="dolly-value">0.00</span></label>
+                        <input type="range" id="dolly-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>Invert <span id="invert-value">0.00</span></label>
+                        <input type="range" id="invert-slider">
+                    </div>
                 </div>
-                <div class="slider-group">
-                    <label>Quality <span id="quality-value">1.00</span></label>
-                    <input type="range" id="quality-slider">
-                </div>
-                <div class="slider-group">
-                    <label>Edge Fix <span id="edgeFix-value">1.00</span></label>
-                    <input type="range" id="edgeFix-slider">
-                </div>
-                <div class="slider-group">
-                    <label>SSAA <span id="ssaa-value">1.00</span></label>
-                    <input type="range" id="ssaa-slider">
-                </div>
-                <div class="slider-group">
-                    <label>Smoothing <span id="smoothing-value">0.85</span></label>
-                    <input type="range" id="smoothing-slider">
-                </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="mirror-checkbox" checked>
-                    <label for="mirror-checkbox">Mirror edges</label>
-                </div>
-            </div>
 
-            <div class="section">
-                <button id="reset-btn">Reset Defaults</button>
-            </div>
+                <div class="section">
+                    <h3>Quality & Behavior</h3>
+                    <div class="select-group">
+                        <label for="max-resolution">Max Resolution</label>
+                        <select id="max-resolution">
+                            <option value="1024">1024px</option>
+                            <option value="1920" selected>1920px (default)</option>
+                            <option value="2560">2560px</option>
+                            <option value="3840">4K</option>
+                            <option value="0">Full (no limit)</option>
+                        </select>
+                    </div>
+                    <div class="slider-group">
+                        <label>Quality <span id="quality-value">1.00</span></label>
+                        <input type="range" id="quality-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>Edge Fix <span id="edgeFix-value">1.00</span></label>
+                        <input type="range" id="edgeFix-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>SSAA <span id="ssaa-value">1.00</span></label>
+                        <input type="range" id="ssaa-slider">
+                    </div>
+                    <div class="slider-group">
+                        <label>Smoothing <span id="smoothing-value">0.85</span></label>
+                        <input type="range" id="smoothing-slider">
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="mirror-checkbox" checked>
+                        <label for="mirror-checkbox">Mirror edges</label>
+                    </div>
+                </div>
 
-            <div class="section instructions">
-                <p><strong>Left drag:</strong> Pan scene</p>
-                <p><strong>Right drag:</strong> Orbit camera</p>
-                <p><strong>Scroll:</strong> Zoom in/out</p>
+                <div class="section">
+                    <button id="reset-btn">Reset Defaults</button>
+                </div>
+
+                <div class="section instructions">
+                    <p><strong>Left drag:</strong> Pan scene</p>
+                    <p><strong>Right drag:</strong> Orbit camera</p>
+                    <p><strong>Scroll:</strong> Zoom in/out</p>
+                </div>
             </div>
         </div>
 

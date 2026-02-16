@@ -31,8 +31,17 @@ export class UI {
         this.drawerStartOffset = 0;
         this.drawerCurrentOffset = 0;
         this.controlsEl = null;
+        this.controlsHeaderEl = null;
+        this.controlsScrollEl = null;
         this.toggleControlsBtn = null;
         this.drawerHandleEl = null;
+        this.drawerPointerTarget = null;
+        this.regenerateDepthBtn = null;
+        this.currentImageBlob = null;
+        this.currentOriginalImageBlob = null;
+        this.depthGenerationInProgress = false;
+        this.zoomSliderMin = 0.1;
+        this.zoomSliderMax = 3.0;
         this.drawerSuppressTap = false;
         this.boundDrawerPointerMove = (event) => this.onDrawerPointerMove(event);
         this.boundDrawerPointerUp = (event) => this.onDrawerPointerUp(event);
@@ -47,6 +56,7 @@ export class UI {
                 });
             }
         };
+        this.state.motionEnabled = false;
         this.persistedSettings = this.loadPersistedSettings();
     }
 
@@ -55,6 +65,7 @@ export class UI {
 
         // File uploads
         this.bindImageUpload();
+        this.bindRegenerateDepthButton();
         this.bindFileUpload('depth-upload', async (file) => {
             await this.renderer.loadDepth(file);
             await this.saveMediaBlob('depth', file);
@@ -74,8 +85,13 @@ export class UI {
 
         const maxResSelect = document.getElementById('max-resolution');
         maxResSelect.value = String(this.state.maxResolution);
-        maxResSelect.addEventListener('change', (e) => {
+        maxResSelect.addEventListener('change', async (e) => {
             this.state.maxResolution = parseInt(e.target.value, 10);
+            try {
+                await this.applyMaxResolutionToCurrentImage();
+            } catch (err) {
+                console.error('Failed to apply max resolution change:', err);
+            }
             this.scheduleSettingsSave();
         });
 
@@ -127,9 +143,11 @@ export class UI {
 
     initResponsiveLayout() {
         this.controlsEl = document.getElementById('controls');
+        this.controlsHeaderEl = document.getElementById('controls-header');
+        this.controlsScrollEl = document.getElementById('controls-scroll');
         this.toggleControlsBtn = document.getElementById('toggle-controls');
         this.drawerHandleEl = document.getElementById('drawer-handle');
-        if (!this.controlsEl || !this.toggleControlsBtn) return;
+        if (!this.controlsEl || !this.controlsHeaderEl || !this.controlsScrollEl || !this.toggleControlsBtn) return;
 
         this.toggleControlsBtn.addEventListener('click', () => {
             if (this.isMobileLayout) {
@@ -140,8 +158,11 @@ export class UI {
             }
         });
 
+        if (this.controlsHeaderEl) {
+            this.controlsHeaderEl.addEventListener('pointerdown', (event) => this.onDrawerPointerDown(event));
+        }
+
         if (this.drawerHandleEl) {
-            this.drawerHandleEl.addEventListener('pointerdown', (event) => this.onDrawerPointerDown(event));
             this.drawerHandleEl.addEventListener('click', () => {
                 if (!this.isMobileLayout || this.drawerSuppressTap) return;
 
@@ -166,7 +187,7 @@ export class UI {
 
     onControlsTransitionEnd(event) {
         if (!event || event.target !== this.controlsEl) return;
-        if (event.propertyName !== 'transform') return;
+        if (event.propertyName !== 'transform' && event.propertyName !== 'top') return;
         this.triggerLayoutSync();
     }
 
@@ -191,7 +212,10 @@ export class UI {
             document.body.classList.remove('drawer-collapsed', 'drawer-mid', 'drawer-full');
             if (this.controlsEl) {
                 this.controlsEl.classList.remove('dragging');
-                this.controlsEl.style.removeProperty('--drawer-offset');
+                this.controlsEl.style.removeProperty('--drawer-top');
+            }
+            if (this.controlsScrollEl) {
+                this.controlsScrollEl.scrollTop = 0;
             }
             this.setDesktopControlsOpen(this.desktopControlsOpen, {
                 persist: false,
@@ -251,7 +275,7 @@ export class UI {
 
         if (!animate) {
             this.controlsEl.classList.add('dragging');
-            this.controlsEl.style.setProperty('--drawer-offset', `${Math.round(offset)}px`);
+            this.controlsEl.style.setProperty('--drawer-top', `${Math.round(offset)}px`);
             requestAnimationFrame(() => {
                 if (!this.drawerDragging && this.controlsEl) {
                     this.controlsEl.classList.remove('dragging');
@@ -261,7 +285,7 @@ export class UI {
         }
 
         this.controlsEl.classList.remove('dragging');
-        this.controlsEl.style.setProperty('--drawer-offset', `${Math.round(offset)}px`);
+        this.controlsEl.style.setProperty('--drawer-top', `${Math.round(offset)}px`);
     }
 
     setMobileDrawerDetent(detent, { persist = true, sync = false, animate = true } = {}) {
@@ -277,8 +301,8 @@ export class UI {
             document.body.classList.add(`drawer-${this.mobileDrawerDetent}`);
             this.applyMobileDrawerOffset(offset, animate);
 
-            if (this.mobileDrawerDetent === 'collapsed' && this.controlsEl) {
-                this.controlsEl.scrollTop = 0;
+            if (this.mobileDrawerDetent === 'collapsed' && this.controlsScrollEl) {
+                this.controlsScrollEl.scrollTop = 0;
             }
         }
 
@@ -291,12 +315,13 @@ export class UI {
     }
 
     onDrawerPointerDown(event) {
-        if (!this.isMobileLayout || !this.controlsEl || !this.drawerHandleEl) return;
+        if (!this.isMobileLayout || !this.controlsEl) return;
 
         event.preventDefault();
         this.drawerDragging = true;
         this.drawerSuppressTap = false;
         this.drawerPointerId = event.pointerId;
+        this.drawerPointerTarget = event.currentTarget || null;
         this.drawerStartY = event.clientY;
 
         const offsets = this.getMobileDrawerOffsets();
@@ -304,10 +329,10 @@ export class UI {
         this.drawerCurrentOffset = this.drawerStartOffset;
 
         this.controlsEl.classList.add('dragging');
-        this.controlsEl.style.setProperty('--drawer-offset', `${Math.round(this.drawerStartOffset)}px`);
+        this.controlsEl.style.setProperty('--drawer-top', `${Math.round(this.drawerStartOffset)}px`);
 
-        if (this.drawerHandleEl.setPointerCapture) {
-            this.drawerHandleEl.setPointerCapture(event.pointerId);
+        if (this.drawerPointerTarget && this.drawerPointerTarget.setPointerCapture) {
+            this.drawerPointerTarget.setPointerCapture(event.pointerId);
         }
 
         window.addEventListener('pointermove', this.boundDrawerPointerMove);
@@ -328,7 +353,7 @@ export class UI {
         }
 
         this.drawerCurrentOffset = nextOffset;
-        this.controlsEl.style.setProperty('--drawer-offset', `${Math.round(nextOffset)}px`);
+        this.controlsEl.style.setProperty('--drawer-top', `${Math.round(nextOffset)}px`);
     }
 
     onDrawerPointerUp(event) {
@@ -337,9 +362,10 @@ export class UI {
         this.drawerDragging = false;
         this.drawerPointerId = null;
 
-        if (this.drawerHandleEl && this.drawerHandleEl.releasePointerCapture) {
-            this.drawerHandleEl.releasePointerCapture(event.pointerId);
+        if (this.drawerPointerTarget && this.drawerPointerTarget.releasePointerCapture) {
+            this.drawerPointerTarget.releasePointerCapture(event.pointerId);
         }
+        this.drawerPointerTarget = null;
 
         window.removeEventListener('pointermove', this.boundDrawerPointerMove);
         window.removeEventListener('pointerup', this.boundDrawerPointerUp);
@@ -399,38 +425,142 @@ export class UI {
             const file = e.target.files[0];
             if (!file) return;
 
-            const resized = await this.resizeImage(file, this.state.maxResolution);
-            await this.renderer.loadImage(resized);
-            await this.saveMediaBlob('image', resized);
-            this.scheduleSettingsSave();
+            try {
+                this.currentOriginalImageBlob = file;
+                await this.saveMediaBlob('image-original', file);
 
-            if (this.autoDepthEnabled) {
-                try {
-                    this.showLoadingOverlay('Loading AI model (~20MB)...');
-                    this.showProgress('Loading AI model (~20MB)...');
-                    await this.depthEstimator.init((p) => {
-                        this.updateProgress(p);
-                        if (p.status === 'progress') {
-                            const pct = Math.round((p.loaded / p.total) * 100);
-                            this.showLoadingOverlay(`Downloading model: ${pct}%`);
-                        }
-                    });
+                const resized = await this.resizeImage(this.currentOriginalImageBlob, this.state.maxResolution);
+                this.currentImageBlob = resized;
+                await this.renderer.loadImage(resized);
+                await this.saveMediaBlob('image', resized);
+                this.scheduleSettingsSave();
 
-                    this.showLoadingOverlay('Estimating depth...');
-                    this.showProgress('Estimating depth...');
-                    const depthImage = await this.depthEstimator.estimate(resized);
-                    const depthData = this.depthEstimator.toImageData(depthImage);
-
-                    this.renderer.loadDepthFromImageData(depthData);
-                    await this.saveDepthImageData(depthData);
-                } catch (err) {
-                    console.error('Depth estimation failed:', err);
-                } finally {
-                    this.hideProgress();
-                    this.hideLoadingOverlay();
+                if (this.autoDepthEnabled) {
+                    await this.generateDepthMapFromImage(resized);
                 }
+            } catch (err) {
+                console.error('Image upload failed:', err);
+                this.showLoadingOverlay('Image/depth processing failed. See console for details.');
+                await new Promise((resolve) => setTimeout(resolve, 1200));
+                this.hideProgress();
+                this.hideLoadingOverlay();
+            } finally {
+                input.value = '';
             }
         });
+    }
+
+    async applyMaxResolutionToCurrentImage() {
+        const original = await this.getBestOriginalImageBlob();
+        if (!(original instanceof Blob)) return;
+
+        const resized = await this.resizeImage(original, this.state.maxResolution);
+        this.currentImageBlob = resized;
+        await this.renderer.loadImage(resized);
+        await this.saveMediaBlob('image', resized);
+    }
+
+    async getBestOriginalImageBlob() {
+        if (this.currentOriginalImageBlob instanceof Blob) {
+            return this.currentOriginalImageBlob;
+        }
+
+        const storedOriginal = await this.loadMediaBlob('image-original');
+        if (storedOriginal instanceof Blob) {
+            this.currentOriginalImageBlob = storedOriginal;
+            return storedOriginal;
+        }
+
+        if (this.currentImageBlob instanceof Blob) {
+            return this.currentImageBlob;
+        }
+
+        const storedImage = await this.loadMediaBlob('image');
+        if (storedImage instanceof Blob) {
+            this.currentImageBlob = storedImage;
+            this.currentOriginalImageBlob = storedImage;
+            await this.saveMediaBlob('image-original', storedImage);
+            return storedImage;
+        }
+
+        return null;
+    }
+
+    bindRegenerateDepthButton() {
+        this.regenerateDepthBtn = document.getElementById('regenerate-depth-btn');
+        if (!this.regenerateDepthBtn) return;
+
+        this.regenerateDepthBtn.addEventListener('click', async () => {
+            if (this.depthGenerationInProgress) return;
+
+            let imageBlob = this.currentImageBlob;
+            if (!(imageBlob instanceof Blob)) {
+                imageBlob = await this.loadMediaBlob('image');
+            }
+
+            if (!(imageBlob instanceof Blob)) {
+                this.showLoadingOverlay('Upload an image before regenerating depth.');
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+                this.hideLoadingOverlay();
+                return;
+            }
+
+            this.currentImageBlob = imageBlob;
+
+            try {
+                await this.generateDepthMapFromImage(imageBlob);
+            } catch (err) {
+                console.error('Depth regeneration failed:', err);
+                this.showLoadingOverlay('Depth regeneration failed. See console for details.');
+                await new Promise((resolve) => setTimeout(resolve, 1200));
+                this.hideLoadingOverlay();
+            }
+        });
+    }
+
+    setDepthGenerationBusy(busy) {
+        this.depthGenerationInProgress = busy;
+
+        if (this.regenerateDepthBtn) {
+            this.regenerateDepthBtn.disabled = busy;
+            this.regenerateDepthBtn.textContent = busy ? 'Generating Depth...' : 'Regenerate Depth Map';
+        }
+    }
+
+    async generateDepthMapFromImage(imageBlob) {
+        if (!(imageBlob instanceof Blob)) {
+            throw new Error('No image available for depth generation');
+        }
+        if (this.depthGenerationInProgress) {
+            return;
+        }
+
+        this.setDepthGenerationBusy(true);
+
+        try {
+            this.showLoadingOverlay('Loading AI model (~20MB)...');
+            this.showProgress('Loading AI model (~20MB)...');
+            await this.depthEstimator.init((p) => {
+                this.updateProgress(p);
+                if (p.status === 'progress') {
+                    const pct = Math.round((p.loaded / p.total) * 100);
+                    this.showLoadingOverlay(`Downloading model: ${pct}%`);
+                }
+            });
+
+            this.showLoadingOverlay('Estimating depth...');
+            this.showProgress('Estimating depth...');
+
+            const depthImage = await this.depthEstimator.estimate(imageBlob);
+            const depthData = this.depthEstimator.toImageData(depthImage);
+
+            this.renderer.loadDepthFromImageData(depthData);
+            await this.saveDepthImageData(depthData);
+        } finally {
+            this.hideProgress();
+            this.hideLoadingOverlay();
+            this.setDepthGenerationBusy(false);
+        }
     }
 
     async resizeImage(file, maxRes) {
@@ -468,9 +598,13 @@ export class UI {
         const input = document.getElementById(id);
         input.addEventListener('change', async (e) => {
             const file = e.target.files[0];
-            if (file) {
-                await callback(file);
-                this.scheduleSettingsSave();
+            try {
+                if (file) {
+                    await callback(file);
+                    this.scheduleSettingsSave();
+                }
+            } finally {
+                input.value = '';
             }
         });
     }
@@ -524,20 +658,32 @@ export class UI {
         });
     }
 
+    zoomToSliderValue(zoom) {
+        const z = Number(zoom);
+        const clamped = Math.min(this.zoomSliderMax, Math.max(this.zoomSliderMin, Number.isFinite(z) ? z : 1));
+        return this.zoomSliderMin + this.zoomSliderMax - clamped;
+    }
+
+    sliderValueToZoom(sliderValue) {
+        const v = Number(sliderValue);
+        const mapped = this.zoomSliderMin + this.zoomSliderMax - (Number.isFinite(v) ? v : 1);
+        return Math.min(this.zoomSliderMax, Math.max(this.zoomSliderMin, mapped));
+    }
+
     bindZoomSlider() {
         const slider = document.getElementById('zoom-slider');
         const value = document.getElementById('zoom-value');
 
-        slider.min = 0.1;
-        slider.max = 3.0;
+        slider.min = this.zoomSliderMin;
+        slider.max = this.zoomSliderMax;
         slider.step = 0.01;
-        slider.value = this.state._targetZoom;
+        slider.value = this.zoomToSliderValue(this.state._targetZoom);
         value.textContent = this.state._targetZoom.toFixed(2);
 
         slider.addEventListener('input', (e) => {
-            const v = parseFloat(e.target.value);
-            this.state._targetZoom = v;
-            value.textContent = v.toFixed(2);
+            const nextZoom = this.sliderValueToZoom(parseFloat(e.target.value));
+            this.state._targetZoom = nextZoom;
+            value.textContent = nextZoom.toFixed(2);
             this.scheduleSettingsSave();
         });
     }
@@ -607,6 +753,7 @@ export class UI {
 
         select.addEventListener('change', (e) => {
             this.motion.setPreset(e.target.value);
+            this.state.motionEnabled = this.motion.running;
             this.updateAllSliders();
             this.updateExportDurationText();
             this.scheduleSettingsSave();
@@ -784,7 +931,7 @@ export class UI {
             const slider = document.getElementById(`${name}-slider`);
             const value = document.getElementById(`${name}-value`);
             if (name === 'zoom') {
-                slider.value = this.state._targetZoom;
+                slider.value = this.zoomToSliderValue(this.state._targetZoom);
                 value.textContent = this.state._targetZoom.toFixed(2);
             } else {
                 slider.value = this.state[name];
@@ -890,6 +1037,7 @@ export class UI {
         }
 
         this.motion.running = this.motion.preset !== 'none';
+        this.state.motionEnabled = this.motion.running;
         this.motion.time = 0;
 
         const exportData = persisted.export || {};
@@ -1099,12 +1247,22 @@ export class UI {
     }
 
     async restorePersistedMedia() {
+        const originalBlob = await this.loadMediaBlob('image-original');
         const imageBlob = await this.loadMediaBlob('image');
-        if (!imageBlob) {
+
+        const sourceBlob = originalBlob || imageBlob;
+        if (!sourceBlob) {
             return false;
         }
 
-        await this.renderer.loadImage(imageBlob);
+        this.currentOriginalImageBlob = sourceBlob;
+        const resized = await this.resizeImage(sourceBlob, this.state.maxResolution);
+        this.currentImageBlob = resized;
+        await this.renderer.loadImage(resized);
+        await this.saveMediaBlob('image', resized);
+        if (!originalBlob) {
+            await this.saveMediaBlob('image-original', sourceBlob);
+        }
 
         const depthBlob = await this.loadMediaBlob('depth');
         if (depthBlob) {
@@ -1119,8 +1277,9 @@ export class UI {
         const slider = document.getElementById('zoom-slider');
         const value = document.getElementById('zoom-value');
         const target = this.state._targetZoom;
-        if (Math.abs(parseFloat(slider.value) - target) > 0.005) {
-            slider.value = target;
+        const sliderTarget = this.zoomToSliderValue(target);
+        if (Math.abs(parseFloat(slider.value) - sliderTarget) > 0.005) {
+            slider.value = sliderTarget;
             value.textContent = target.toFixed(2);
             this.scheduleSettingsSave();
         }
