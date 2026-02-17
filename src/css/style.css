@@ -314,6 +314,30 @@ button:hover {
     border-radius: 4px;
 }
 
+.about {
+    font-size: 0.8em;
+    color: #9aa0bf;
+    text-align: left;
+    padding: 10px;
+    background: #202441;
+    border: 1px solid #323a63;
+    border-radius: 4px;
+}
+
+.about p + p {
+    margin-top: 6px;
+}
+
+.about a {
+    color: #aeb8ff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.about a:hover {
+    color: #c5cdff;
+}
+
 .toggle-controls {
     position: fixed;
     top: 10px;
