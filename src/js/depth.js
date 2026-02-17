@@ -10,9 +10,26 @@ export class DepthEstimator {
         if (this.model || this.loading) return;
         this.loading = true;
 
-        const device = navigator.gpu ? 'webgpu' : 'wasm';
+        try {
+            // Try WebGPU first — navigator.gpu may exist but adapter creation can still fail
+            if (navigator.gpu) {
+                const adapter = await navigator.gpu.requestAdapter();
+                if (adapter) {
+                    this.model = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
+                        device: 'webgpu',
+                        progress_callback: onProgress
+                    });
+                    this.loading = false;
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('WebGPU init failed, falling back to WASM:', e.message);
+        }
+
+        // Fallback to WASM
         this.model = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
-            device,
+            device: 'wasm',
             progress_callback: onProgress
         });
 
