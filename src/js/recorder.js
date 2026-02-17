@@ -25,8 +25,7 @@ export class Recorder {
         this.duration = 5;
         this.loops = 1;
         this.format = 'webm';
-        this.fps = 30;
-        this.videoCaptureFps = 60;
+        this.fps = 24;
         this.exportQuality = {
             webm: 50,
             mp4: 50,
@@ -87,6 +86,20 @@ export class Recorder {
         return Math.max(1, Math.round(durationSec * fps) + 1);
     }
 
+    clampExportFps(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 24;
+        return Math.max(12, Math.min(60, Math.round(numeric)));
+    }
+
+    setExportFps(value) {
+        this.fps = this.clampExportFps(value);
+    }
+
+    getExportFps() {
+        return this.clampExportFps(this.fps);
+    }
+
     clampExportQuality(value) {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return 50;
@@ -103,16 +116,42 @@ export class Recorder {
         return this.clampExportQuality(this.exportQuality[format]);
     }
 
-    getVideoBitrateMbpsForQuality(quality) {
-        const normalized = this.clampExportQuality(quality) / 100;
-        // Exponential curve keeps mid values close to previous default (8 Mbps),
-        // while allowing much higher bitrates at the top end.
-        return 2 * Math.pow(16, normalized);
+    isVideoLosslessQuality(quality) {
+        return this.clampExportQuality(quality) >= 100;
+    }
+
+    getLosslessVideoBitrateMbps(format) {
+        const normalizedFormat = format === 'mp4' ? 'mp4' : 'webm';
+        const width = Math.max(1, Math.round(this.exportWidth));
+        const height = Math.max(1, Math.round(this.exportHeight));
+        const fps = this.getExportFps();
+
+        // MediaRecorder is still codec-compressed; this aims for visually near-lossless.
+        const bitsPerPixel = normalizedFormat === 'mp4' ? 1.0 : 1.2;
+        const rawMbps = (width * height * fps * bitsPerPixel) / 1_000_000;
+        const minMbps = normalizedFormat === 'mp4' ? 60 : 80;
+        const maxMbps = normalizedFormat === 'mp4' ? 240 : 320;
+        return Math.max(minMbps, Math.min(maxMbps, rawMbps));
+    }
+
+    getVideoBitrateMbpsForQuality(quality, format = 'webm') {
+        const normalizedFormat = format === 'mp4' ? 'mp4' : 'webm';
+        const clampedQuality = this.clampExportQuality(quality);
+
+        if (this.isVideoLosslessQuality(clampedQuality)) {
+            return this.getLosslessVideoBitrateMbps(normalizedFormat);
+        }
+
+        const normalized = clampedQuality / 99;
+        const minMbps = 2;
+        const maxMbps = normalizedFormat === 'mp4' ? 48 : 64;
+        return minMbps * Math.pow(maxMbps / minMbps, normalized);
     }
 
     getVideoBitrateBpsForFormat(format) {
-        const quality = this.getExportQuality(format);
-        const mbps = this.getVideoBitrateMbpsForQuality(quality);
+        const normalizedFormat = format === 'mp4' ? 'mp4' : 'webm';
+        const quality = this.getExportQuality(normalizedFormat);
+        const mbps = this.getVideoBitrateMbpsForQuality(quality, normalizedFormat);
         return Math.round(mbps * 1_000_000);
     }
 
@@ -447,8 +486,9 @@ export class Recorder {
         this.recordingStartTime = 0;
         this.recordingDuration = duration * 1000;
         if (this.format !== 'gif' || typeof window.GIF === 'undefined') {
-            const videoFrames = this.getBoundaryAlignedFrameCount(duration, this.videoCaptureFps);
-            this.recordingDuration = (videoFrames * 1000) / this.videoCaptureFps;
+            const exportFps = this.getExportFps();
+            const videoFrames = this.getBoundaryAlignedFrameCount(duration, exportFps);
+            this.recordingDuration = (videoFrames * 1000) / exportFps;
         }
 
         try {
@@ -486,7 +526,8 @@ export class Recorder {
     }
 
     async recordVideo(offscreen, forceWebm) {
-        const stream = offscreen.captureStream(this.videoCaptureFps);
+        const exportFps = this.getExportFps();
+        const stream = offscreen.captureStream(exportFps);
         const selectedVideoFormat = forceWebm
             ? 'webm'
             : (this.format === 'mp4' ? 'mp4' : 'webm');
@@ -558,8 +599,9 @@ export class Recorder {
         this.gifFrames = [];
         this.gifOffscreen = offscreen;
         this.gifOffCtx = offCtx;
-        this.gifFrameDelay = 1000 / this.fps;
-        this.gifTotalFrames = this.getBoundaryAlignedFrameCount(duration, this.fps);
+        const gifFps = this.getExportFps();
+        this.gifFrameDelay = 1000 / gifFps;
+        this.gifTotalFrames = this.getBoundaryAlignedFrameCount(duration, gifFps);
         this.gifCapturedCount = 0;
         this.recordingDuration = this.gifTotalFrames * this.gifFrameDelay;
         this.gifRecording = true;
@@ -627,10 +669,11 @@ export class Recorder {
 
         const elapsed = performance.now() - this.recordingStartTime;
 
-        // GIF frame capture: sample at this.fps rate from the render loop
+        // GIF frame capture: sample at selected export FPS from the render loop
         if (this.gifRecording) {
-            const framePeriod = 1000 / this.fps;
-            const totalFrames = this.gifTotalFrames || this.getBoundaryAlignedFrameCount(this.recordingDuration / 1000, this.fps);
+            const gifFps = this.getExportFps();
+            const framePeriod = 1000 / gifFps;
+            const totalFrames = this.gifTotalFrames || this.getBoundaryAlignedFrameCount(this.recordingDuration / 1000, gifFps);
 
             while (this.gifCapturedCount < totalFrames && elapsed >= this.gifCapturedCount * framePeriod) {
                 const { sx, sy, sw, sh } = this.getRecordingRegionPixels();

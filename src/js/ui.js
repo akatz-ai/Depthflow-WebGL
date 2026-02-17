@@ -24,6 +24,7 @@ export class UI {
             mp4: 50,
             gif: 70
         };
+        this.pendingExportFps = 24;
         this.mobileMediaQuery = window.matchMedia('(max-width: 768px)');
         this.isMobileLayout = this.mobileMediaQuery.matches;
         this.desktopControlsOpen = true;
@@ -853,11 +854,19 @@ export class UI {
         const exportQualitySlider = document.getElementById('export-quality-slider');
         const exportQualityLabel = document.getElementById('export-quality-label');
         const exportQualityValue = document.getElementById('export-quality-value');
+        const exportFpsSlider = document.getElementById('export-fps-slider');
+        const exportFpsValue = document.getElementById('export-fps-value');
 
         const clampQuality = (value, fallback = 50) => {
             const parsed = Number.parseInt(String(value), 10);
             if (!Number.isFinite(parsed)) return fallback;
             return Math.max(1, Math.min(100, parsed));
+        };
+
+        const clampFps = (value, fallback = 24) => {
+            const parsed = Number.parseInt(String(value), 10);
+            if (!Number.isFinite(parsed)) return fallback;
+            return Math.max(12, Math.min(60, parsed));
         };
 
         const normalizeFormat = (value) => {
@@ -894,6 +903,7 @@ export class UI {
             }
 
             this.updateExportDurationText();
+            syncQualityUIForFormat(this.recorder.format);
         };
 
         const applyPersistedExportQuality = () => {
@@ -904,6 +914,13 @@ export class UI {
                 this.pendingExportQuality[format] = quality;
                 this.recorder.setExportQuality(format, quality);
             }
+        };
+
+        const applyPersistedExportFps = () => {
+            const persistedFps = this.persistedSettings?.export?.fps;
+            const fps = clampFps(persistedFps, this.pendingExportFps);
+            this.pendingExportFps = fps;
+            this.recorder.setExportFps(fps);
         };
 
         const syncQualityUIForFormat = (format) => {
@@ -922,18 +939,32 @@ export class UI {
             }
         };
 
+        const syncFpsUI = () => {
+            const fps = this.recorder.getExportFps();
+            this.pendingExportFps = fps;
+
+            if (exportFpsSlider) {
+                exportFpsSlider.value = String(fps);
+            }
+            if (exportFpsValue) {
+                exportFpsValue.textContent = `${fps} fps`;
+            }
+        };
+
         const gifOption = formatSelect.querySelector('option[value="gif"]');
         if (gifOption && typeof window.GIF === 'undefined') {
             gifOption.title = 'GIF export is not available in this browser session.';
         }
 
         applyPersistedExportQuality();
+        applyPersistedExportFps();
 
         this.recorder.loops = parseInt(loopsSlider.value, 10) || 1;
         this.recorder.format = normalizeFormat(formatSelect.value);
         formatSelect.value = this.recorder.format;
         loopsValue.textContent = String(this.recorder.loops);
         syncQualityUIForFormat(this.recorder.format);
+        syncFpsUI();
 
         applyAspectPreset(aspectSelect.value, false);
 
@@ -970,6 +1001,17 @@ export class UI {
             });
         }
 
+        if (exportFpsSlider) {
+            exportFpsSlider.addEventListener('input', (e) => {
+                const fps = clampFps(e.target.value, this.recorder.getExportFps());
+                this.recorder.setExportFps(fps);
+                this.pendingExportFps = fps;
+                syncFpsUI();
+                syncQualityUIForFormat(normalizeFormat(this.recorder.format || formatSelect.value));
+                this.scheduleSettingsSave();
+            });
+        }
+
         previewBtn.addEventListener('click', () => {
             if (this.recorder.isRecording) return;
 
@@ -997,6 +1039,9 @@ export class UI {
             formatSelect.disabled = true;
             if (exportQualitySlider) {
                 exportQualitySlider.disabled = true;
+            }
+            if (exportFpsSlider) {
+                exportFpsSlider.disabled = true;
             }
 
             const total = this.recorder.getRecordingDuration();
@@ -1026,6 +1071,9 @@ export class UI {
                 if (exportQualitySlider) {
                     exportQualitySlider.disabled = false;
                 }
+                if (exportFpsSlider) {
+                    exportFpsSlider.disabled = false;
+                }
             }
         });
     }
@@ -1038,7 +1086,10 @@ export class UI {
             return `${clampedQuality}% (sample ${sampleStep})`;
         }
 
-        const bitrate = this.recorder.getVideoBitrateMbpsForQuality(clampedQuality);
+        const bitrate = this.recorder.getVideoBitrateMbpsForQuality(clampedQuality, format);
+        if (this.recorder.isVideoLosslessQuality(clampedQuality)) {
+            return `Lossless (target ${bitrate.toFixed(0)} Mbps)`;
+        }
         return `${clampedQuality}% (${bitrate.toFixed(1)} Mbps)`;
     }
 
@@ -1211,12 +1262,17 @@ export class UI {
             const parsed = Number.parseInt(String(value), 10);
             return Number.isFinite(parsed) ? Math.max(1, Math.min(100, parsed)) : fallback;
         };
+        const parseExportFps = (value, fallback) => {
+            const parsed = Number.parseInt(String(value), 10);
+            return Number.isFinite(parsed) ? Math.max(12, Math.min(60, parsed)) : fallback;
+        };
 
         this.pendingExportQuality = {
             webm: parseExportQuality(exportQuality.webm, 50),
             mp4: parseExportQuality(exportQuality.mp4, 50),
             gif: parseExportQuality(exportQuality.gif, 70)
         };
+        this.pendingExportFps = parseExportFps(exportData.fps, this.pendingExportFps);
 
         const activeExportFormat = formatSelect && ['webm', 'mp4', 'gif'].includes(formatSelect.value)
             ? formatSelect.value
@@ -1224,6 +1280,14 @@ export class UI {
         const exportQualitySlider = document.getElementById('export-quality-slider');
         if (exportQualitySlider) {
             exportQualitySlider.value = String(this.pendingExportQuality[activeExportFormat]);
+        }
+        const exportFpsSlider = document.getElementById('export-fps-slider');
+        if (exportFpsSlider) {
+            exportFpsSlider.value = String(this.pendingExportFps);
+        }
+        const exportFpsValue = document.getElementById('export-fps-value');
+        if (exportFpsValue) {
+            exportFpsValue.textContent = `${this.pendingExportFps} fps`;
         }
 
         const layoutData = persisted.layout || {};
@@ -1277,6 +1341,13 @@ export class UI {
             const parsed = Number.parseInt(String(value), 10);
             return Number.isFinite(parsed) ? Math.max(1, Math.min(100, parsed)) : fallback;
         };
+        const sanitizeFps = (value, fallback) => {
+            const parsed = Number.parseInt(String(value), 10);
+            return Number.isFinite(parsed) ? Math.max(12, Math.min(60, parsed)) : fallback;
+        };
+        const fps = this.recorder
+            ? this.recorder.getExportFps()
+            : sanitizeFps(this.pendingExportFps, 24);
         const quality = this.recorder
             ? {
                 webm: this.recorder.getExportQuality('webm'),
@@ -1325,6 +1396,7 @@ export class UI {
                 aspect: aspectSelect ? aspectSelect.value : '16:9',
                 loops: loopsSlider ? (parseInt(loopsSlider.value, 10) || 1) : 1,
                 format: formatSelect ? formatSelect.value : 'webm',
+                fps,
                 quality
             },
             layout: {
