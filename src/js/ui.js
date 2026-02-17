@@ -19,6 +19,11 @@ export class UI {
         this.mediaDbPromise = null;
         this.settingsSaveTimer = null;
         this.layoutSyncTimer = null;
+        this.pendingExportQuality = {
+            webm: 50,
+            mp4: 50,
+            gif: 70
+        };
         this.mobileMediaQuery = window.matchMedia('(max-width: 768px)');
         this.isMobileLayout = this.mobileMediaQuery.matches;
         this.desktopControlsOpen = true;
@@ -123,6 +128,14 @@ export class UI {
             this.scheduleSettingsSave(0);
         });
 
+        const recenterViewBtn = document.getElementById('recenter-view-btn');
+        if (recenterViewBtn) {
+            recenterViewBtn.addEventListener('click', () => {
+                this.recenterCenterOnly();
+                this.scheduleSettingsSave(0);
+            });
+        }
+
         this.initResponsiveLayout();
 
         this.bindPersistenceTriggers();
@@ -168,14 +181,18 @@ export class UI {
     }
 
     recenterView() {
-        this.state.centerX = 0;
-        this.state.centerY = 0;
+        this.recenterCenterOnly();
         this.state.originX = 0;
         this.state.originY = 0;
         this.state.offsetX = 0;
         this.state.offsetY = 0;
         this.state._targetOffsetX = 0;
         this.state._targetOffsetY = 0;
+    }
+
+    recenterCenterOnly() {
+        this.state.centerX = 0;
+        this.state.centerY = 0;
     }
 
     setRecorder(recorder) {
@@ -833,6 +850,26 @@ export class UI {
         const formatSelect = document.getElementById('export-format');
         const previewBtn = document.getElementById('preview-btn');
         const exportBtn = document.getElementById('export-btn');
+        const exportQualitySlider = document.getElementById('export-quality-slider');
+        const exportQualityLabel = document.getElementById('export-quality-label');
+        const exportQualityValue = document.getElementById('export-quality-value');
+
+        const clampQuality = (value, fallback = 50) => {
+            const parsed = Number.parseInt(String(value), 10);
+            if (!Number.isFinite(parsed)) return fallback;
+            return Math.max(1, Math.min(100, parsed));
+        };
+
+        const normalizeFormat = (value) => {
+            if (value === 'mp4' || value === 'gif' || value === 'webm') return value;
+            return 'webm';
+        };
+
+        const formatLabel = (format) => {
+            if (format === 'mp4') return 'MP4';
+            if (format === 'gif') return 'GIF';
+            return 'WebM';
+        };
 
         const setPreviewButtonState = (previewing) => {
             previewBtn.classList.toggle('active', previewing);
@@ -859,14 +896,44 @@ export class UI {
             this.updateExportDurationText();
         };
 
+        const applyPersistedExportQuality = () => {
+            const persistedQuality = this.persistedSettings?.export?.quality || {};
+            for (const format of ['webm', 'mp4', 'gif']) {
+                const fallback = this.pendingExportQuality[format];
+                const quality = clampQuality(persistedQuality[format], fallback);
+                this.pendingExportQuality[format] = quality;
+                this.recorder.setExportQuality(format, quality);
+            }
+        };
+
+        const syncQualityUIForFormat = (format) => {
+            const normalized = normalizeFormat(format);
+            const quality = this.recorder.getExportQuality(normalized);
+            this.pendingExportQuality[normalized] = quality;
+
+            if (exportQualitySlider) {
+                exportQualitySlider.value = String(quality);
+            }
+            if (exportQualityLabel) {
+                exportQualityLabel.textContent = `${formatLabel(normalized)} Quality`;
+            }
+            if (exportQualityValue) {
+                exportQualityValue.textContent = this.getExportQualityLabel(normalized, quality);
+            }
+        };
+
         const gifOption = formatSelect.querySelector('option[value="gif"]');
         if (gifOption && typeof window.GIF === 'undefined') {
             gifOption.title = 'GIF export is not available in this browser session.';
         }
 
+        applyPersistedExportQuality();
+
         this.recorder.loops = parseInt(loopsSlider.value, 10) || 1;
-        this.recorder.format = formatSelect.value;
+        this.recorder.format = normalizeFormat(formatSelect.value);
+        formatSelect.value = this.recorder.format;
         loopsValue.textContent = String(this.recorder.loops);
+        syncQualityUIForFormat(this.recorder.format);
 
         applyAspectPreset(aspectSelect.value, false);
 
@@ -885,10 +952,23 @@ export class UI {
         });
 
         formatSelect.addEventListener('change', (e) => {
-            this.recorder.format = e.target.value;
+            this.recorder.format = normalizeFormat(e.target.value);
+            formatSelect.value = this.recorder.format;
             this.recorder.showCropGuides();
+            syncQualityUIForFormat(this.recorder.format);
             this.scheduleSettingsSave();
         });
+
+        if (exportQualitySlider) {
+            exportQualitySlider.addEventListener('input', (e) => {
+                const activeFormat = normalizeFormat(this.recorder.format || formatSelect.value);
+                const quality = clampQuality(e.target.value, this.recorder.getExportQuality(activeFormat));
+                this.recorder.setExportQuality(activeFormat, quality);
+                this.pendingExportQuality[activeFormat] = quality;
+                syncQualityUIForFormat(activeFormat);
+                this.scheduleSettingsSave();
+            });
+        }
 
         previewBtn.addEventListener('click', () => {
             if (this.recorder.isRecording) return;
@@ -915,6 +995,9 @@ export class UI {
             aspectSelect.disabled = true;
             loopsSlider.disabled = true;
             formatSelect.disabled = true;
+            if (exportQualitySlider) {
+                exportQualitySlider.disabled = true;
+            }
 
             const total = this.recorder.getRecordingDuration();
             this.showLoadingOverlay(`Recording... 0.0s / ${total.toFixed(1)}s`);
@@ -940,8 +1023,23 @@ export class UI {
                 aspectSelect.disabled = false;
                 loopsSlider.disabled = false;
                 formatSelect.disabled = false;
+                if (exportQualitySlider) {
+                    exportQualitySlider.disabled = false;
+                }
             }
         });
+    }
+
+    getExportQualityLabel(format, quality) {
+        const clampedQuality = Math.max(1, Math.min(100, Math.round(Number(quality) || 50)));
+
+        if (format === 'gif') {
+            const sampleStep = this.recorder.getGifEncoderQualityFromSlider(clampedQuality);
+            return `${clampedQuality}% (sample ${sampleStep})`;
+        }
+
+        const bitrate = this.recorder.getVideoBitrateMbpsForQuality(clampedQuality);
+        return `${clampedQuality}% (${bitrate.toFixed(1)} Mbps)`;
     }
 
     getDefaultExportSize(aspectRatio) {
@@ -1108,6 +1206,26 @@ export class UI {
             formatSelect.value = exportData.format;
         }
 
+        const exportQuality = exportData.quality || {};
+        const parseExportQuality = (value, fallback) => {
+            const parsed = Number.parseInt(String(value), 10);
+            return Number.isFinite(parsed) ? Math.max(1, Math.min(100, parsed)) : fallback;
+        };
+
+        this.pendingExportQuality = {
+            webm: parseExportQuality(exportQuality.webm, 50),
+            mp4: parseExportQuality(exportQuality.mp4, 50),
+            gif: parseExportQuality(exportQuality.gif, 70)
+        };
+
+        const activeExportFormat = formatSelect && ['webm', 'mp4', 'gif'].includes(formatSelect.value)
+            ? formatSelect.value
+            : 'webm';
+        const exportQualitySlider = document.getElementById('export-quality-slider');
+        if (exportQualitySlider) {
+            exportQualitySlider.value = String(this.pendingExportQuality[activeExportFormat]);
+        }
+
         const layoutData = persisted.layout || {};
         if (typeof layoutData.desktopControlsOpen === 'boolean') {
             this.desktopControlsOpen = layoutData.desktopControlsOpen;
@@ -1155,6 +1273,21 @@ export class UI {
         const aspectSelect = document.getElementById('aspect-ratio');
         const loopsSlider = document.getElementById('loops-slider');
         const formatSelect = document.getElementById('export-format');
+        const sanitizeQuality = (value, fallback) => {
+            const parsed = Number.parseInt(String(value), 10);
+            return Number.isFinite(parsed) ? Math.max(1, Math.min(100, parsed)) : fallback;
+        };
+        const quality = this.recorder
+            ? {
+                webm: this.recorder.getExportQuality('webm'),
+                mp4: this.recorder.getExportQuality('mp4'),
+                gif: this.recorder.getExportQuality('gif')
+            }
+            : {
+                webm: sanitizeQuality(this.pendingExportQuality.webm, 50),
+                mp4: sanitizeQuality(this.pendingExportQuality.mp4, 50),
+                gif: sanitizeQuality(this.pendingExportQuality.gif, 70)
+            };
 
         return {
             version: 1,
@@ -1191,7 +1324,8 @@ export class UI {
             export: {
                 aspect: aspectSelect ? aspectSelect.value : '16:9',
                 loops: loopsSlider ? (parseInt(loopsSlider.value, 10) || 1) : 1,
-                format: formatSelect ? formatSelect.value : 'webm'
+                format: formatSelect ? formatSelect.value : 'webm',
+                quality
             },
             layout: {
                 desktopControlsOpen: this.desktopControlsOpen,

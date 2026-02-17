@@ -129,6 +129,10 @@ body.controls-collapsed .controls,
     margin-bottom: 20px;
 }
 
+.recenter-section {
+    margin-top: 10px;
+}
+
 #regenerate-depth-btn {
     margin-bottom: 12px;
 }
@@ -294,6 +298,11 @@ button:hover {
 .btn-primary {
     background: #7f8fff;
     color: #1a1a2e;
+}
+
+.btn-small {
+    padding: 8px 12px;
+    font-size: 0.82em;
 }
 
 .instructions {

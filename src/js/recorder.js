@@ -27,6 +27,11 @@ export class Recorder {
         this.format = 'webm';
         this.fps = 30;
         this.videoCaptureFps = 60;
+        this.exportQuality = {
+            webm: 50,
+            mp4: 50,
+            gif: 70
+        };
 
         // Crop guide state
         this.showGuides = false;
@@ -80,6 +85,45 @@ export class Recorder {
 
     getBoundaryAlignedFrameCount(durationSec, fps) {
         return Math.max(1, Math.round(durationSec * fps) + 1);
+    }
+
+    clampExportQuality(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 50;
+        return Math.max(1, Math.min(100, Math.round(numeric)));
+    }
+
+    setExportQuality(format, value) {
+        if (!['webm', 'mp4', 'gif'].includes(format)) return;
+        this.exportQuality[format] = this.clampExportQuality(value);
+    }
+
+    getExportQuality(format) {
+        if (!['webm', 'mp4', 'gif'].includes(format)) return 50;
+        return this.clampExportQuality(this.exportQuality[format]);
+    }
+
+    getVideoBitrateMbpsForQuality(quality) {
+        const normalized = this.clampExportQuality(quality) / 100;
+        // Exponential curve keeps mid values close to previous default (8 Mbps),
+        // while allowing much higher bitrates at the top end.
+        return 2 * Math.pow(16, normalized);
+    }
+
+    getVideoBitrateBpsForFormat(format) {
+        const quality = this.getExportQuality(format);
+        const mbps = this.getVideoBitrateMbpsForQuality(quality);
+        return Math.round(mbps * 1_000_000);
+    }
+
+    getGifEncoderQualityFromSlider(quality) {
+        const normalized = this.clampExportQuality(quality) / 100;
+        // gif.js quality: 1 is best quality/largest file, 30 is lowest quality.
+        return Math.max(1, Math.min(30, Math.round(30 - normalized * 29)));
+    }
+
+    getGifEncoderQuality() {
+        return this.getGifEncoderQualityFromSlider(this.getExportQuality('gif'));
     }
 
     warmupSmoothingForCycle(cycleDurationSec) {
@@ -443,6 +487,9 @@ export class Recorder {
 
     async recordVideo(offscreen, forceWebm) {
         const stream = offscreen.captureStream(this.videoCaptureFps);
+        const selectedVideoFormat = forceWebm
+            ? 'webm'
+            : (this.format === 'mp4' ? 'mp4' : 'webm');
 
         const mimeCandidates = forceWebm
             ? ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
@@ -458,7 +505,7 @@ export class Recorder {
 
         const mimeType = mimeCandidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
         const recorderOptions = {
-            videoBitsPerSecond: 8_000_000
+            videoBitsPerSecond: this.getVideoBitrateBpsForFormat(selectedVideoFormat)
         };
 
         if (mimeType) {
@@ -532,7 +579,7 @@ export class Recorder {
         // Encode all captured frames
         const gif = new window.GIF({
             workers: 2,
-            quality: 10,
+            quality: this.getGifEncoderQuality(),
             width: offscreen.width,
             height: offscreen.height,
             workerScript: 'src/vendor/gif.worker.js'
