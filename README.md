@@ -2,7 +2,10 @@
 
 In-browser depth-parallax renderer that generates depth maps locally and renders interactive 3D motion from a single image.
 
-![Demo](assets/demo.png)
+<div style="display: inline-block;">
+    <img src="https://github.com/user-attachments/assets/66f76e99-90d7-42d9-b656-6d5a8b0ab62d" alt="Description" width="250"/>
+    <img src="https://github.com/user-attachments/assets/d87fbf93-9f4c-465e-9fcd-c784ceb75a7e" alt="Description" width="450"/>
+</div>
 
 ## Features
 
