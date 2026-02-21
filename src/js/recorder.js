@@ -544,7 +544,14 @@ export class Recorder {
                 ]
                 : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
 
-        const mimeType = mimeCandidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+        if (typeof MediaRecorder === 'undefined') {
+            stream.getTracks().forEach((track) => track.stop());
+            throw new Error('MediaRecorder is not supported in this browser');
+        }
+
+        const mimeType = typeof MediaRecorder.isTypeSupported === 'function'
+            ? (mimeCandidates.find((type) => MediaRecorder.isTypeSupported(type)) || '')
+            : '';
         const recorderOptions = {
             videoBitsPerSecond: this.getVideoBitrateBpsForFormat(selectedVideoFormat)
         };

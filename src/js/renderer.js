@@ -122,24 +122,31 @@ export class Renderer {
 
     async loadImage(blob) {
         const img = await createImageBitmap(blob);
-        this.imageAspect = img.width / img.height;
-        this.uploadTexture('image', img);
-        return { width: img.width, height: img.height };
+        try {
+            this.imageAspect = img.width / img.height;
+            this.uploadTexture('image', img);
+            return { width: img.width, height: img.height };
+        } finally {
+            img.close();
+        }
     }
 
     async loadDepth(blob) {
         const img = await createImageBitmap(blob);
+        try {
+            // Convert to ImageData for storage and processing
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            this.originalDepth = ctx.getImageData(0, 0, img.width, img.height);
+            this.lastEdgeFix = -1;  // Force reprocess
 
-        // Convert to ImageData for storage and processing
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        this.originalDepth = ctx.getImageData(0, 0, img.width, img.height);
-        this.lastEdgeFix = -1;  // Force reprocess
-
-        this.applyEdgeFix();
+            this.applyEdgeFix();
+        } finally {
+            img.close();
+        }
     }
 
     loadDepthFromImageData(imageData) {

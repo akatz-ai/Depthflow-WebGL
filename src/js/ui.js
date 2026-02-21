@@ -602,15 +602,19 @@ export class UI {
         this.setDepthGenerationBusy(true);
 
         try {
-            this.showLoadingOverlay('Loading AI model (~20MB)...');
-            this.showProgress('Loading AI model (~20MB)...');
-            await this.depthEstimator.init((p) => {
-                this.updateProgress(p);
-                if (p.status === 'progress') {
-                    const pct = Math.round((p.loaded / p.total) * 100);
-                    this.showLoadingOverlay(`Downloading model: ${pct}%`);
-                }
-            });
+            if (!this.depthEstimator.isReady()) {
+                this.showLoadingOverlay('Loading AI model (~20MB, cached after first download)...');
+                this.showProgress('Loading AI model (~20MB, cached after first download)...');
+                await this.depthEstimator.init((p) => {
+                    this.updateProgress(p);
+                    if (p.status === 'progress') {
+                        const pct = Math.round((p.loaded / p.total) * 100);
+                        this.showLoadingOverlay(`Downloading model: ${pct}%`);
+                    }
+                });
+            } else {
+                await this.depthEstimator.init();
+            }
 
             this.showLoadingOverlay('Estimating depth...');
             this.showProgress('Estimating depth...');

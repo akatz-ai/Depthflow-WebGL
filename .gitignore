@@ -27,4 +27,5 @@ Thumbs.db
 *.tmp
 *.temp
 .claude/context
+.worktrees/
 assets/

@@ -66,8 +66,8 @@ class DepthFlowApp {
                 await this.renderer.loadImage(imageBlob);
                 await this.renderer.loadDepth(depthBlob);
             }
-        } catch (e) {
-            console.log('No default images found, waiting for upload');
+        } catch {
+            // Default sample assets are optional in some checkouts.
         }
     }
 
